@@ -157,9 +157,9 @@ describe('Cloudflare build configuration', () => {
     expect(handoff).toContain('codex/cloudflare-migration');
   });
 
-  it('limits every Translator parallel and relay batch entry point to 30', () => {
+  it('keeps Translator parallel at 30 while capping each relay request at six Cloudflare connections', () => {
     expect(read('public/translator-runtime/js/app.js')).toContain('const TRANSLATOR_MAX_PARALLEL = 30;');
-    expect(read('public/translator-runtime/js/gemini/api.js')).toContain('const PROXY_RELAY_CHAT_BATCH_MAX_SIZE = 30;');
+    expect(read('public/translator-runtime/js/gemini/api.js')).toContain('const PROXY_RELAY_CHAT_BATCH_MAX_SIZE = 6;');
     expect(read('public/translator-runtime/index.html')).toContain('id="parallelCount" value="2" min="1" max="30"');
   });
 

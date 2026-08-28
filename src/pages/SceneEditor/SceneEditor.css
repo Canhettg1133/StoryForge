@@ -32,6 +32,35 @@
   min-width: 0;
 }
 
+.scene-editor-panel-loading {
+  margin: auto;
+  color: var(--color-text-secondary);
+}
+
+.scene-editor-review-modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--color-surface-overlay);
+  backdrop-filter: blur(4px);
+}
+
+.scene-editor-review-dialog {
+  display: flex;
+  width: min(960px, calc(100vw - 48px));
+  height: min(88dvh, 900px);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-sidebar);
+  box-shadow: var(--shadow-xl);
+}
+
 .scene-editor-side--chapter .chapter-list,
 .scene-editor-side--ai .ai-sidebar {
   height: 100%;
@@ -370,6 +399,21 @@
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+  }
+}
+
+@media (max-width: 640px) {
+  .scene-editor-review-modal {
+    padding: 0;
+  }
+
+  .scene-editor-review-dialog {
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
   }
 }
 

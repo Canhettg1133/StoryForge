@@ -277,6 +277,7 @@ ${categories.map((category) => `${category.id}. ${category.title}`).join('\n')}`
                     return await translateWithOllama(request, temperature, requestOptions);
                 }
                 if (typeof useProxy !== 'undefined' && useProxy) {
+                    if (typeof sendProxyTranslationAttempt !== 'function') throwProxySchedulerUnavailable();
                     const response = await sendProxyTranslationAttempt({
                         chunkIndex: options.requestIndex || 0,
                         text: request,

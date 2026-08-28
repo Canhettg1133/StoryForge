@@ -1,0 +1,110 @@
+/* Toolbar rules copied from Canhettg1133/StoryForge at
+   fbd973bc0116bf1af9547ef2761d54520cf201ed, src/components/editor/StoryEditor.css.
+   Keep the breakpoint rules too: checking only the first selector missed the 440px override. */
+.chapter-outline-panel {
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  flex-shrink: 0;
+}
+
+.chapter-outline-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-8);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-primary);
+  transition: background 0.15s;
+}
+
+.chapter-outline-toggle:hover {
+  background: var(--color-surface-2);
+}
+
+.chapter-outline-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: var(--space-4);
+}
+
+.chapter-outline-toggle-row .chapter-outline-toggle {
+  flex: 1;
+  width: auto;
+}
+
+.chapter-history-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 4px);
+  background: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.chapter-history-toggle:hover,
+.chapter-history-toggle--active {
+  border-color: var(--color-border);
+  background: var(--color-surface-2);
+  color: var(--color-primary);
+}
+
+.chapter-history-toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.chapter-history-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chapter-outline-panel:hover .chapter-outline-edit-btn {
+  opacity: 1;
+}
+
+@media (max-width: 1024px) {
+  .chapter-outline-toggle {
+    padding-inline: var(--space-5);
+  }
+}
+
+@media (max-width: 640px) {
+  .chapter-outline-toggle-row {
+    padding-right: 0;
+  }
+
+  .chapter-outline-toggle {
+    padding-inline: var(--space-4);
+  }
+}
+
+.story-editor--mobile .chapter-outline-toggle {
+  min-height: 34px;
+  padding: 7px 16px;
+}
+
+.story-editor--mobile .chapter-outline-toggle-row {
+  gap: 4px;
+  padding-right: 8px;
+}
+
+.story-editor--mobile .chapter-history-toggle {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 11px;
+}

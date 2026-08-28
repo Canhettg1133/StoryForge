@@ -1,0 +1,23 @@
+// Synthetic diversity metadata is test-only, never an authorship label for the evaluator.
+export const manuscriptReviewCorpus = [
+  ['H01', 'Chín giờ tối, bà Tư mới kéo cửa sắt xuống. Bà giữ lại một ngọn đèn cho Hòa, như mọi đêm.'],
+  ['H02', '“Con về muộn.” Bà Thu đặt bát canh xuống bàn.\n\nHuy cởi áo mưa. “Xe con thủng lốp.”'],
+  ['H03', 'Gió đổi chiều. Lâm cúi xuống. Một mũi tên cắm cạnh chân. Cậu lùi vào bóng cây.'],
+  ['H04', 'Qua khung cửa mở hé, Hạnh nhìn thấy người đưa thư đặt chiếc phong bì màu nâu lên bậc đá, phủi giọt mưa khỏi vai áo rồi quay xe trước khi con chó già trong sân kịp sủa tiếng thứ hai.'],
+  ['H05', 'Mưa gõ lên mái hiên. Mưa tràn qua rãnh ngói. Mưa xóa dấu chân người vừa rời ngõ.'],
+  ['H06', 'Vy đặt chiếc nhẫn 💍 cạnh tách cà phê. Cô nhắn: ‘Đừng chờ mình nhé.’ rồi tắt màn hình.'],
+  ['H07', 'Lan gọi Minh từ cuối sân. Minh quay lại, đưa chiếc chìa khóa cho Lan rồi tiếp tục xếp những thùng sách.'],
+  ['H08', 'Con tàu rời bến khi sương còn mắc trên lan can. Dưới khoang, Phúc kiểm lại vé một lần nữa; đến tờ cuối cùng, anh mới nhận ra ghế số mười hai vẫn bỏ trống.'],
+  ['H09', '— Anh đã khóa cửa chưa?\n\n— Rồi. Chìa khóa ở dưới chậu cây, đúng chỗ cũ.'],
+  ['H10', 'Ông giáo gạch dưới cụm ‘mặt hồ phẳng như gương’ và bảo học trò rằng đôi khi một hình ảnh cũ vẫn đúng với ký ức của nhân vật.'],
+  ['A11', 'Không khí đặc quánh lại. Mọi người đều há hốc mồm kinh ngạc khi luồng sáng bùng lên giữa đại sảnh.'],
+  ['A12', 'Nam nhìn cánh cửa, nhìn chiếc khóa, rồi lại nhìn khe sáng dưới nền. Cậu nhìn mãi mà không bước tới.'],
+  ['A13', 'Cô không biết phải nói gì. Cô không biết phải nói gì. Cô không biết phải nói gì, nên chỉ cúi đầu.'],
+  ['A14', 'Đứng giữa quảng trường sau cơn mưa, Duy cố nhớ từng lời người gác cổng đã dặn từ tối qua, nhưng tiếng chuông từ tháp phía đông cứ dội xuống, đoàn xe chở thương binh vẫn nối nhau đi qua, những người bán hàng vội kéo bạt che quầy, còn đứa bé áo vàng ở bên kia đường liên tục chỉ về phía mái nhà nơi một vệt khói mỏng đang bốc lên mà không một ai chịu dừng lại để nhìn.'],
+  ['A15', 'Anh chạy. Anh ngã. Anh đứng. Anh thở. Anh nhìn.'],
+  ['A16', '“Đi đi.” Huy nói. “Tôi không đi.” Mai đáp. “Vậy ở lại.” Huy nói.'],
+  ['A17', '“Tôi sẽ quay lại trước bình minh, Mai nói rồi kéo cửa bước ra ngoài.'],
+  ['A18', 'Mai bước tới , nhìn cánh cửa  rồi hỏi : ‘Có ai ở đó không ?’'],
+  ['A19', 'Không thể nào!!! Anh đã nói rồi??? Vậy mà họ vẫn tiếp tục...'],
+  ['A20', 'Ở đầu hành lang, cánh cửa  khép lại sau lưng An. Ở cuối hành lang, cánh cửa  khép lại sau lưng Bình.'],
+].map(([id, text]) => ({ id, text, diversity: id.startsWith('H') ? 'synthetic_human_like' : 'synthetic_ai_like' }));

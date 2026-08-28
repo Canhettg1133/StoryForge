@@ -129,17 +129,27 @@ describe('phase10 translator proxy model default', () => {
     expect(html).toContain('Lấy models');
     expect(html).toContain('Nhập model thủ công');
     expect(html).toContain('src="js/theme.js?v=2"');
-    expect(html).toContain('href="style.css?v=28"');
-    expect(html).toContain('src="js/app.js?v=23"');
-    expect(html).toContain('src="js/gemini/model-rotation.js?v=17"');
-    expect(html).toContain('src="js/gemini/api.js?v=17"');
-    expect(html).toContain('src="js/translation/retry.js?v=18"');
-    expect(html).toContain('src="js/translation/engine.js?v=25"');
-    expect(html).toContain('src="js/ui/progress.js?v=23"');
+    expect(html).toContain('href="style.css?v=29"');
+    expect(html).toContain('src="js/app.js?v=25"');
+    expect(html).toContain('src="js/translation/errors.js?v=14"');
+    expect(html).toContain('src="js/gemini/model-rotation.js?v=18"');
+    expect(html).toContain('src="js/gemini/api.js?v=20"');
+    expect(html).toContain('src="js/translation/local-store.js?v=24"');
+    expect(html).toContain('src="js/translation/retry.js?v=21"');
+    expect(html).toContain('src="js/translation/engine.js?v=29"');
+    expect(html).toContain('src="js/translation/story-prompt.js?v=24"');
+    expect(html).toContain('src="js/ui/progress.js?v=24"');
+    expect(html).toContain('src="js/ui/file-handler.js?v=28"');
     expect(html).toContain('src="js/ui/controls.js?v=23"');
-    expect(html).toContain('src="js/ui/chunk-tracker.js?v=23"');
+    expect(html).toContain('src="js/ui/chunk-tracker.js?v=27"');
+    expect(html).toContain('src="js/history/history.js?v=17"');
+    expect(html).toContain('src="js/local-ai/ollama.js?v=16"');
+    expect(html).toContain('src="js/translation/han-audit.js?v=4"');
+    expect(html).toContain('src="js/features/chunk-key-usage/state.js?v=1"');
+    expect(html).toContain('src="js/features/chunk-key-usage/view.js?v=2"');
+    expect(html).toContain('href="css/features/chunk-key-usage.css?v=2"');
     expect(html).toContain('src="js/proxy/proxy-api.js?v=17"');
-    expect(html).toContain('src="js/init.js?v=25"');
+    expect(html).toContain('src="js/init.js?v=26"');
   });
 
   it('keeps translator model filters visible on mobile without a one-line horizontal scroller', () => {

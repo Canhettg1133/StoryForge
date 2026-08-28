@@ -26,6 +26,7 @@
     <link rel="stylesheet" href="custom-proxy-presets.css?v=1">
     <link rel="stylesheet" href="chapter-reader.css?v=1">
     <link rel="stylesheet" href="han-audit-file.css?v=4">
+    <link rel="stylesheet" href="css/features/chunk-key-usage.css?v=2">
 </head>
 
 <body>
@@ -1427,7 +1428,9 @@
     ============================================== -->
 
     <!-- 1. Main App (Global variables, PROMPT_TEMPLATES, GEMINI_MODELS, init) -->
-    <script src="js/app.js?v=23"></script>
+    <script src="js/app.js?v=25"></script>
+    <script src="js/features/chunk-key-usage/state.js?v=1"></script>
+    <script src="js/features/chunk-key-usage/view.js?v=2"></script>
     <script src="js/proxy/custom-proxy-presets.js?v=1"></script>
     <script src="js/translation/prompt-settings.js?v=1"></script>
     <script src="js/translation/request-contract.js?v=1"></script>
@@ -1437,11 +1440,11 @@
     <script src="js/worker-timer.js?v=14"></script>
 
     <!-- 1c. Error messages (PHẢI load trước Gemini/Proxy/Ollama để chuẩn hóa lỗi) -->
-    <script src="js/translation/errors.js?v=13"></script>
+    <script src="js/translation/errors.js?v=14"></script>
 
     <!-- 2. Gemini API -->
-    <script src="js/gemini/model-rotation.js?v=17"></script>
-    <script src="js/gemini/api.js?v=17"></script>
+    <script src="js/gemini/model-rotation.js?v=18"></script>
+    <script src="js/gemini/api.js?v=20"></script>
 
     <!-- 3. Translation Engine -->
     <script src="js/translation/chunker.js?v=13"></script>
@@ -1454,26 +1457,26 @@
     <script src="js/chapter/chapter-indexer.js?v=1"></script>
     <script src="js/chapter/chapter-snapshot.js?v=1"></script>
     <script src="js/chapter/chapter-epub.js?v=1"></script>
-    <script src="js/translation/retry.js?v=18"></script>
-    <script src="js/translation/han-audit.js?v=3"></script>
+    <script src="js/translation/retry.js?v=21"></script>
+    <script src="js/translation/han-audit.js?v=4"></script>
     <script src="js/translation/han-audit/file-feature.js?v=2"></script>
-    <script src="js/translation/engine.js?v=26"></script>
-    <script src="js/translation/story-prompt.js?v=23"></script>
+    <script src="js/translation/engine.js?v=29"></script>
+    <script src="js/translation/story-prompt.js?v=24"></script>
 
 
     <!-- 4. UI Components -->
     <script src="js/ui/progress.js?v=24"></script>
-    <script src="js/ui/file-handler.js?v=27"></script>
+    <script src="js/ui/file-handler.js?v=28"></script>
     <script src="js/ui/settings.js?v=17"></script>
     <script src="js/ui/controls.js?v=23"></script>
-    <script src="js/ui/chunk-tracker.js?v=25"></script>
+    <script src="js/ui/chunk-tracker.js?v=27"></script>
 
     <!-- 5. History -->
-    <script src="js/history/history.js?v=16"></script>
+    <script src="js/history/history.js?v=17"></script>
     <script src="js/chapter/chapter-feature.js?v=1"></script>
 
     <!-- 6. Local AI (Ollama) -->
-    <script src="js/local-ai/ollama.js?v=15"></script>
+    <script src="js/local-ai/ollama.js?v=16"></script>
 
     <!-- 6b. Proxy API -->
     <script src="js/proxy/proxy-api.js?v=17"></script>

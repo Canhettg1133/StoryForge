@@ -69,6 +69,7 @@ import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
 import { navigateBackOr } from '../../utils/navigation.js';
 import './Settings.css';
 import ChapterCompletionModelSetting from './ChapterCompletionModelSetting.jsx';
+import ManuscriptReviewModelSetting from '../../features/manuscriptReview/ManuscriptReviewModelSetting.jsx';
 import SetupGuideButtons from '../../features/setupGuides/SetupGuideButtons.jsx';
 
 // ─── Reusable Key Section Component ───
@@ -1718,6 +1719,13 @@ export default function Settings() {
 
           {selectedProviderCard !== PROVIDER_CARD_CLOUDFLARE_COVER ? (
             <ChapterCompletionModelSetting
+              ollamaModels={selectedProviderCard === PROVIDERS.OLLAMA && testResults[PROVIDERS.OLLAMA]?.success
+                ? ollamaModels
+                : undefined}
+            />
+          ) : null}
+          {selectedProviderCard !== PROVIDER_CARD_CLOUDFLARE_COVER ? (
+            <ManuscriptReviewModelSetting
               ollamaModels={selectedProviderCard === PROVIDERS.OLLAMA && testResults[PROVIDERS.OLLAMA]?.success
                 ? ollamaModels
                 : undefined}

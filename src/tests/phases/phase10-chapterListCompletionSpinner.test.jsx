@@ -74,6 +74,15 @@ describe('phase10 chapter list completion spinner', () => {
   let root;
 
   beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('sf-preferred-provider', 'gemini_direct');
+    localStorage.setItem('sf-quality-mode', 'best');
+    localStorage.setItem('sf-chapter-completion-model-preferences', JSON.stringify({
+      version: 1,
+      scopes: {
+        gemini_direct: { model: '', prompted: true },
+      },
+    }));
     container = document.createElement('div');
     document.body.appendChild(container);
   });
@@ -184,5 +193,78 @@ describe('phase10 chapter list completion spinner', () => {
 
     expect(completionAction).not.toBeNull();
     expect(completionAction.classList.contains('chapter-mobile-sheet-btn--success')).toBe(false);
+  });
+
+  it('does not run or dismiss the first-use model prompt when the desktop dialog is cancelled', async () => {
+    localStorage.removeItem('sf-chapter-completion-model-preferences');
+    const ChapterList = await loadChapterList();
+    const runChapterCompletion = vi.fn();
+    mockedProjectStoreState = buildStoreState({ runChapterCompletion });
+
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<ChapterList />);
+    });
+    await act(async () => {
+      container.querySelector('.chapter-item').dispatchEvent(new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 32,
+        clientY: 32,
+      }));
+    });
+    await act(async () => {
+      container.querySelector('.context-menu-item--action').click();
+    });
+
+    const dialog = document.querySelector('[role="dialog"][aria-labelledby^="chapter-completion-model-title"]');
+    expect(dialog).not.toBeNull();
+    await act(async () => {
+      Array.from(dialog.querySelectorAll('button'))
+        .find((button) => button.textContent === 'Hủy')
+        .click();
+    });
+
+    expect(runChapterCompletion).not.toHaveBeenCalled();
+    expect(localStorage.getItem('sf-chapter-completion-model-preferences')).toBeNull();
+  });
+
+  it('lets the mobile completion action keep the current model and records the prompt once', async () => {
+    localStorage.removeItem('sf-chapter-completion-model-preferences');
+    const ChapterList = await loadChapterList();
+    const runChapterCompletion = vi.fn().mockResolvedValue({ ok: true, kind: 'success' });
+    mockedProjectStoreState = buildStoreState({ runChapterCompletion });
+
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<ChapterList isMobileLayout />);
+    });
+    await act(async () => {
+      container.querySelector('.chapter-mobile-actions').dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      }));
+    });
+    await act(async () => {
+      container.querySelector('.chapter-mobile-sheet-btn--action').click();
+    });
+
+    const dialog = document.querySelector('[role="dialog"][aria-labelledby^="chapter-completion-model-title"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog.querySelector('select').value).toBe('');
+    await act(async () => {
+      Array.from(dialog.querySelectorAll('button'))
+        .find((button) => button.textContent.includes('Hoàn thành chương'))
+        .click();
+      await Promise.resolve();
+    });
+
+    expect(runChapterCompletion).toHaveBeenCalledWith(6, { mode: 'manual' });
+    expect(JSON.parse(localStorage.getItem('sf-chapter-completion-model-preferences')))
+      .toMatchObject({
+        scopes: {
+          gemini_direct: { model: '', prompted: true },
+        },
+      });
   });
 });

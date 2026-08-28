@@ -26,6 +26,7 @@ function loadRuntimeContext(files) {
     clearTimeout,
     document: dom.window.document,
     window: dom.window,
+    isTranslating: false,
     useProxy: false,
     getProxyKeyCount: () => 0,
     translatedChunks: [],

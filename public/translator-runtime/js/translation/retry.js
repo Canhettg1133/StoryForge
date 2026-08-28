@@ -24,6 +24,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
 
     // Track số lần bị OUTPUT_TOO_SHORT
     let shortOutputCount = 0;
+    let lastError = null;
 
     const originalRequest = typeof normalizeTranslationRequest === 'function'
         ? normalizeTranslationRequest(text)
@@ -80,7 +81,9 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 if (typeof recordTranslatorRpmRequest === 'function') {
                     recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.OLLAMA, 0);
                 }
-                const result = await translateWithOllama(promptToUse, temperature);
+                const result = await translateWithOllama(promptToUse, temperature, {
+                    chunkKeyUsage: { chunkIndex, kind: attempt > 1 ? 'retry' : 'main' },
+                });
 
                 // ========== VALIDATION CHO OLLAMA ==========
                 if (typeof validateTranslationOutput === 'function') {
@@ -112,20 +115,15 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 const activeProxyModel = typeof getActiveProxyModel === 'function' ? getActiveProxyModel() : proxyModel;
                 console.log(`[Proxy] Chunk ${chunkIndex + 1}, attempt ${attempt}/${retries}, temp=${temperature}, model=${activeProxyModel}`);
                 let result;
-                if (typeof sendProxyTranslationAttempt === 'function') {
-                    const proxyAttempt = await sendProxyTranslationAttempt({
-                        chunkIndex,
-                        text: promptToUse,
-                        temperature,
-                        kind: attempt > 1 ? 'retry' : 'main',
-                    });
-                    proxyKeyUsed = proxyAttempt.proxyKey;
-                    result = proxyAttempt.result;
-                } else {
-                    const proxyKey = typeof getProxyKeyForChunk === 'function' ? await getProxyKeyForChunk(chunkIndex) : proxyApiKey;
-                    proxyKeyUsed = proxyKey;
-                    result = await translateChunkViaProxy(promptToUse, temperature, proxyKey);
-                }
+                if (typeof sendProxyTranslationAttempt !== 'function') throwProxySchedulerUnavailable();
+                const proxyAttempt = await sendProxyTranslationAttempt({
+                    chunkIndex,
+                    text: promptToUse,
+                    temperature,
+                    kind: attempt > 1 ? 'retry' : 'main',
+                });
+                proxyKeyUsed = proxyAttempt.proxyKey;
+                result = proxyAttempt.result;
                 if (typeof recordProxyKeySuccess === 'function') {
                     recordProxyKeySuccess(proxyKeyUsed);
                 }
@@ -162,6 +160,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             const translatorError = typeof normalizeTranslatorError === 'function'
                 ? normalizeTranslatorError(error)
                 : error;
+            lastError = translatorError || error;
             const errorCode = translatorError?.code || '';
             const errorMsg = String(error?.message || error || '').toLowerCase();
             const rawErrorMsg = String(translatorError?.rawMessage || error?.message || error || '').toLowerCase();
@@ -173,15 +172,17 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 const is429 = errorCode === 'PROXY_RATE_LIMIT' || combinedErrorMsg.includes('429') || combinedErrorMsg.includes('rate limit');
 
                 if (is403 || is429) {
-                    // Chờ ngắn trước retry - getProxyKeyForChunk sẽ tự chờ cooldown key
-                    const waitTime = is403 ? 3000 : 5000;
-                    console.warn(`[Proxy] Chunk ${chunkIndex + 1} ⚠️ ${is403 ? '403 Backend suspended' : '429 Rate limited'}, chờ ${waitTime / 1000}s rồi xoay key retry...`);
+                    console.warn(`[Proxy] Chunk ${chunkIndex + 1} ⚠️ ${is403 ? '403 Backend suspended' : '429 Rate limited'}, xoay key retry...`);
                     const failedProxyKey = proxyKeyUsed || error?.proxyKeyUsed;
                     if (typeof recordProxyKeyError === 'function' && failedProxyKey) {
                         const retryAfterSeconds = Number(translatorError?.retryAfterSeconds);
                         const cooldownMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
                             ? retryAfterSeconds * 1000
-                            : (is403 ? PROXY_FORBIDDEN_COOLDOWN_MS : PROXY_RATE_LIMIT_COOLDOWN_MS);
+                            : (is403
+                                ? PROXY_FORBIDDEN_COOLDOWN_MS
+                                : (typeof getProxyRateLimitBackoffMs === 'function'
+                                    ? getProxyRateLimitBackoffMs(failedProxyKey)
+                                    : PROXY_RATE_LIMIT_COOLDOWN_MS));
                         recordProxyKeyError(failedProxyKey, is403 ? 'FORBIDDEN_403' : 'RATE_LIMIT_429', cooldownMs);
                     }
 
@@ -189,7 +190,6 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                         throw error;
                     }
 
-                    await sleep(waitTime);
                     continue;
                 }
             }
@@ -224,6 +224,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             if (isNoVietnamese) {
                 shortOutputCount++;
                 console.warn(`[Chunk ${chunkIndex + 1}] ⚠️ Output không có tiếng Việt, thử prompt khác...`);
+                if (attempt === retries) throw translatorError || error;
                 await sleep(500);
                 continue;
             }
@@ -233,6 +234,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             if (isErrorMarker) {
                 shortOutputCount++;
                 console.warn(`[Chunk ${chunkIndex + 1}] ⚠️ AI từ chối dịch, thử prompt literary/fictional...`);
+                if (attempt === retries) throw translatorError || error;
                 await sleep(500);
                 continue;
             }
@@ -241,6 +243,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             const isPromptLeak = errorCode === 'PROMPT_LEAK' || originalErrorText.includes('PROMPT_LEAK');
             if (isPromptLeak) {
                 console.warn(`[Chunk ${chunkIndex + 1}] ⚠️ AI lặp lại prompt, thử lại...`);
+                if (attempt === retries) throw translatorError || error;
                 await sleep(300);
                 continue;
             }
@@ -350,6 +353,9 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             await sleep(waitTime);
         }
     }
+
+    if (lastError) throw lastError;
+    throw new Error('TRANSLATION_RETRY_EXHAUSTED');
 }
 
 // ============================================
@@ -391,18 +397,20 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
                 if (typeof recordTranslatorRpmRequest === 'function') {
                     recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.OLLAMA, 0);
                 }
-                const result = await translateWithOllama(partRequest, 0.8);
+                const result = await translateWithOllama(partRequest, 0.8, {
+                    chunkKeyUsage: { chunkIndex, kind: 'split_retry', partIndex: i },
+                });
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));
             } else if (useProxy) {
                 // Proxy mode - gọi trực tiếp với key theo chunk
-                const result = typeof sendProxyTranslationAttempt === 'function'
-                    ? (await sendProxyTranslationAttempt({
-                        chunkIndex,
-                        text: partRequest,
-                        temperature: 0.8,
-                        kind: 'split_retry',
-                    })).result
-                    : await translateChunkViaProxy(partRequest, 0.8, proxyApiKey);
+                if (typeof sendProxyTranslationAttempt !== 'function') throwProxySchedulerUnavailable();
+                const result = (await sendProxyTranslationAttempt({
+                    chunkIndex,
+                    text: partRequest,
+                    temperature: 0.8,
+                    kind: 'split_retry',
+                    partIndex: i,
+                })).result;
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));
             } else {
                 const directAttempt = await sendDirectTranslationAttempt({
@@ -410,6 +418,7 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
                     text: partRequest,
                     temperature: 0.8,
                     kind: 'split_retry',
+                    partIndex: i,
                 });
                 const { result, modelKeyPair } = directAttempt;
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));

@@ -399,6 +399,15 @@ async function readUpstreamResponseBody(upstream) {
   return text;
 }
 
+function parseRetryAfterSeconds(value, now = Date.now()) {
+  if (value == null || value === '') return undefined;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric >= 0) return Math.ceil(numeric);
+  const retryAt = Date.parse(String(value));
+  if (!Number.isFinite(retryAt)) return undefined;
+  return Math.max(0, Math.ceil((retryAt - now) / 1000));
+}
+
 async function fetchChatPayload(endpoint, headers, payload, signal) {
   try {
     const upstream = await fetch(endpoint, {
@@ -411,6 +420,7 @@ async function fetchChatPayload(endpoint, headers, payload, signal) {
     return {
       ok: upstream.ok,
       status: upstream.status,
+      retryAfterSeconds: parseRetryAfterSeconds(upstream.headers.get('retry-after')),
       body: await readUpstreamResponseBody(upstream),
     };
   } catch {
@@ -606,6 +616,8 @@ export function createOpenAIProxyWebHandler({
       const headers = new Headers(rateHeaders);
       const contentType = upstream.headers.get('content-type');
       if (contentType) headers.set('Content-Type', contentType);
+      const retryAfter = upstream.headers.get('retry-after');
+      if (retryAfter) headers.set('Retry-After', retryAfter);
       return withRelay(new Response(toReadableStream(upstream.body), {
         status: upstream.status,
         headers,

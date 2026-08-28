@@ -2,16 +2,31 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
+import 'fake-indexeddb/auto';
+
+import '../../../public/translator-runtime/js/translation/source-reader.js';
+import '../../../public/translator-runtime/js/translation/local-store.js';
 
 const repoRoot = process.cwd();
 
 function makeElement(id = '') {
+  const attributes = new Map();
   return {
     id,
+    disabled: false,
     innerHTML: '',
     textContent: '',
     value: '',
     style: {},
+    setAttribute(name, value) {
+      attributes.set(name, String(value));
+    },
+    getAttribute(name) {
+      return attributes.get(name) ?? null;
+    },
+    removeAttribute(name) {
+      attributes.delete(name);
+    },
     classList: {
       add() {},
       remove() {},
@@ -30,6 +45,10 @@ function loadChunkIssueRuntime(extra = {}) {
     chunkTrackerBadge: makeElement('chunkTrackerBadge'),
     chunkTrackerPanel: makeElement('chunkTrackerPanel'),
     chunkIssuePanel: makeElement('chunkIssuePanel'),
+    downloadResultBtn: makeElement('downloadResultBtn'),
+    downloadResultBtnText: makeElement('downloadResultBtnText'),
+    downloadResultStatus: makeElement('downloadResultStatus'),
+    downloadPartialBtn: makeElement('downloadPartialBtn'),
     parallelCount: { ...makeElement('parallelCount'), value: '8' },
     sourceLang: { ...makeElement('sourceLang'), value: 'auto' },
   };
@@ -37,6 +56,11 @@ function loadChunkIssueRuntime(extra = {}) {
   const historyCalls = [];
   const sessionUpdates = [];
   const directAttempts = [];
+  const rpmPlans = [];
+  const sessionChunkReads = [];
+  let sessionBulkReads = 0;
+  let activeDirectAttempts = 0;
+  let maxActiveDirectAttempts = 0;
 
   const context = {
     Date,
@@ -77,9 +101,28 @@ function loadChunkIssueRuntime(extra = {}) {
       sessionUpdates.push(args);
       return args;
     },
+    async getTranslatorSessionChunks() {
+      sessionBulkReads += 1;
+      return [];
+    },
+    async getTranslatorChunk(sessionId, chunkIndex) {
+      sessionChunkReads.push({ sessionId, chunkIndex });
+      return null;
+    },
+    async readTranslatorChunkSource(_sessionId, row) {
+      return row?.sourceText || '';
+    },
     buildPromptedChunk: (_prompt, sourceText) => `PROMPT\n${sourceText}`,
+    async waitForTranslatorRpmBatchPlan(options) {
+      rpmPlans.push(options);
+      return { capacity: Math.min(2, options.remainingChunks) };
+    },
     async sendDirectTranslationAttempt(options) {
       directAttempts.push(options);
+      activeDirectAttempts += 1;
+      maxActiveDirectAttempts = Math.max(maxActiveDirectAttempts, activeDirectAttempts);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      activeDirectAttempts -= 1;
       return { result: `Đã dịch lại ${options.chunkIndex + 1}`, modelKeyPair: { keyIndex: 0 } };
     },
     recordKeySuccess() {},
@@ -92,9 +135,18 @@ function loadChunkIssueRuntime(extra = {}) {
     historyCalls,
     sessionUpdates,
     directAttempts,
+    rpmPlans,
+    sessionChunkReads,
+    getSessionBulkReads: () => sessionBulkReads,
+    getMaxActiveDirectAttempts: () => maxActiveDirectAttempts,
   };
 
   vm.createContext(context);
+  vm.runInContext(
+    fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/translation/han-audit/correction-runner.js'), 'utf8'),
+    context,
+    { filename: 'public/translator-runtime/js/translation/han-audit/correction-runner.js' },
+  );
   vm.runInContext(
     fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/ui/chunk-tracker.js'), 'utf8'),
     context,
@@ -224,6 +276,58 @@ describe('translator chunk issue workflow', () => {
     expect(context.toastMessages.at(-1).message).toContain('Chỉ xử lý sau khi dừng hoặc hoàn tất bản dịch');
   });
 
+  it('does not run manual retry while the uploaded TXT Han audit is active', async () => {
+    const context = loadChunkIssueRuntime();
+    vm.runInContext(`
+      isTranslating = false;
+      isHanFileAuditBusy = true;
+      translatedChunks = ['[LỖI CHUNK 1]\\nNguyên nhân: lỗi'];
+    `, context);
+
+    const result = await vm.runInContext('retryIssueChunks({ source: "text" })', context);
+
+    expect(result).toEqual({ ok: false, reason: 'busy' });
+    expect(context.directAttempts).toHaveLength(0);
+  });
+
+  it('rejects a second retry-all action while the first retry job is still running', async () => {
+    const releases = [];
+    let context;
+    context = loadChunkIssueRuntime({
+      async sendDirectTranslationAttempt(options) {
+        context.directAttempts.push(options);
+        return new Promise(resolve => {
+          releases.push(() => resolve({
+            result: `Đã dịch lại ${options.chunkIndex + 1}`,
+            modelKeyPair: { keyIndex: 0 },
+          }));
+        });
+      },
+    });
+    vm.runInContext(`
+      currentTranslatorSessionId = 'retry-busy-session';
+      translatedChunks = ['[LỖI CHUNK 1]\\nNguyên nhân: lỗi'];
+      isTranslating = false;
+      useProxy = false;
+      useOllama = false;
+      initChunkTracker(['Gốc 1'], null, 'PROMPT');
+      trackChunkFailed(0, 'lỗi');
+    `, context);
+
+    const firstRetry = vm.runInContext('retryIssueChunks({ source: "text" })', context);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const secondRetry = vm.runInContext('retryIssueChunks({ source: "text" })', context);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const requestCountBeforeRelease = releases.length;
+    releases.forEach(release => release());
+    const [firstResult, secondResult] = await Promise.all([firstRetry, secondRetry]);
+
+    expect(requestCountBeforeRelease).toBe(1);
+    expect(firstResult).toMatchObject({ ok: true, attempted: 1 });
+    expect(secondResult).toEqual({ ok: false, reason: 'busy' });
+    expect(context.directAttempts).toHaveLength(1);
+  });
+
   it('does not prompt or persist manual edits while a translation is still active', async () => {
     let promptCalls = 0;
     const context = loadChunkIssueRuntime({
@@ -326,13 +430,9 @@ describe('translator chunk issue workflow', () => {
 
   it('retries only failed large-file chunks from local session storage', async () => {
     const context = loadChunkIssueRuntime({
-      async getTranslatorSessionChunks() {
-        return [
-          { chunkIndex: 0, status: 'done', outputText: 'Đã dịch 1', sourceText: 'Gốc 1' },
-          { chunkIndex: 1, status: 'skipped', outputText: '', sourceText: 'Gốc 2' },
-          { chunkIndex: 2, status: 'failed', outputText: '[LỖI CHUNK 3]', sourceText: 'Gốc 3', error: 'CONTENT_BLOCKED_SAFETY' },
-          { chunkIndex: 3, status: 'pending', outputText: '', sourceText: 'Gốc 4' },
-        ];
+      async getTranslatorChunk(sessionId, chunkIndex) {
+        context.sessionChunkReads.push({ sessionId, chunkIndex });
+        return { chunkIndex, status: 'failed', outputText: '[LỖI CHUNK 3]', sourceText: 'Gốc 3', error: 'CONTENT_BLOCKED_SAFETY' };
       },
     });
     vm.runInContext(`
@@ -350,6 +450,8 @@ describe('translator chunk issue workflow', () => {
 
     expect(result).toMatchObject({ ok: true, attempted: 1, succeeded: 1 });
     expect(context.directAttempts.map((attempt) => attempt.chunkIndex)).toEqual([2]);
+    expect(context.sessionChunkReads).toEqual([{ sessionId: 'large-session', chunkIndex: 2 }]);
+    expect(context.getSessionBulkReads()).toBe(0);
     expect(context.directAttempts[0].kind).toBe('manual_retry');
     expect(context.sessionUpdates.at(-1)).toEqual([
       'large-session',
@@ -386,38 +488,322 @@ describe('translator chunk issue workflow', () => {
     });
   });
 
-  it('limits default large-file retries to a small batch and skips pending chunks', async () => {
+  it('retries every failed large-file chunk in RPM-governed parallel waves and skips pending chunks', async () => {
     const context = loadChunkIssueRuntime({
-      async getTranslatorSessionChunks() {
-        return [
-          { chunkIndex: 0, status: 'done', outputText: 'Đã dịch 1', sourceText: 'Gốc 1' },
-          { chunkIndex: 1, status: 'failed', outputText: '[LỖI CHUNK 2]', sourceText: 'Gốc 2' },
-          { chunkIndex: 2, status: 'failed', outputText: '[LỖI CHUNK 3]', sourceText: 'Gốc 3' },
-          { chunkIndex: 3, status: 'failed', outputText: '[LỖI CHUNK 4]', sourceText: 'Gốc 4' },
-          { chunkIndex: 4, status: 'pending', outputText: '', sourceText: 'Gốc 5' },
-        ];
+      async getTranslatorChunk(sessionId, chunkIndex) {
+        context.sessionChunkReads.push({ sessionId, chunkIndex });
+        return { chunkIndex, status: 'failed', outputText: `[LỖI CHUNK ${chunkIndex + 1}]`, sourceText: `Gốc ${chunkIndex + 1}` };
       },
     });
     vm.runInContext(`
       TRANSLATOR_SOURCE_MODES = { LARGE_FILE: 'large-file' };
       currentSourceMode = 'large-file';
       currentTranslatorSessionId = 'large-session';
+      currentHistoryId = 'history-wave';
       translatedChunks = ['Đã dịch 1', '[LỖI CHUNK 2]', '[LỖI CHUNK 3]', '[LỖI CHUNK 4]', null];
       isTranslating = false;
       useProxy = false;
       useOllama = false;
-      document.getElementById('parallelCount').value = '8';
+      document.getElementById('parallelCount').value = '2';
     `, context);
 
     const result = await vm.runInContext('retryIssueChunks({ source: "large-file" })', context);
 
-    expect(result).toMatchObject({ ok: true, attempted: 2, succeeded: 2, failed: 0 });
-    expect(context.directAttempts.map((attempt) => attempt.chunkIndex)).toEqual([1, 2]);
+    expect(result).toMatchObject({ ok: true, attempted: 3, succeeded: 3, failed: 0 });
+    expect(context.rpmPlans.map(plan => plan.remainingChunks)).toEqual([3, 1]);
+    expect(context.getMaxActiveDirectAttempts()).toBe(2);
+    expect(context.directAttempts.map((attempt) => attempt.chunkIndex)).toEqual([1, 2, 3]);
     expect(context.directAttempts.every((attempt) => attempt.kind === 'manual_retry')).toBe(true);
     expect(context.directAttempts.map((attempt) => attempt.text)).toEqual([
       'PROMPT\nGốc 2',
       'PROMPT\nGốc 3',
+      'PROMPT\nGốc 4',
     ]);
+    expect(context.sessionChunkReads.map(read => read.chunkIndex)).toEqual([1, 2, 3]);
+    expect(context.getSessionBulkReads()).toBe(0);
+    expect(context.historyCalls).toHaveLength(2);
+  });
+
+  it('replaces a failed persisted chunk in place before building the final downloadable Blob', async () => {
+    const store = globalThis.TranslatorLocalStore;
+    await store.clearTranslatorLocalStoreForTests();
+    try {
+      const source = new Blob(['Gốc 1\n\nGốc 2\n\nGốc 3'], { type: 'text/plain;charset=utf-8' });
+      Object.defineProperties(source, {
+        name: { value: 'truyen-dai.txt' },
+        lastModified: { value: 1710000000000 },
+      });
+      const session = await store.createTranslatorSessionFromFile(source, { chunkSize: 6 });
+      await store.persistTranslatorChunkBatch(session.id, [
+        { chunkIndex: 0, status: 'done', sourceText: 'Gốc 1', outputText: 'Bản dịch 1' },
+        { chunkIndex: 1, status: 'failed', sourceText: 'Gốc 2', outputText: '[LỖI CHUNK 2]\nNguyên nhân: quota', error: 'quota' },
+        { chunkIndex: 2, status: 'done', sourceText: 'Gốc 3', outputText: 'Bản dịch 3' },
+      ], {
+        status: 'completed',
+        isComplete: true,
+        totalChunks: 3,
+        totalChunksExact: true,
+        completedChunks: 3,
+        failedChunks: 1,
+      });
+
+      const context = loadChunkIssueRuntime({
+        Blob,
+        getTranslatorChunk: store.getTranslatorChunk,
+        updateTranslatorChunkResult: store.updateTranslatorChunkResult,
+        async sendDirectTranslationAttempt(options) {
+          return { result: `Bản dịch ${options.chunkIndex + 1}`, modelKeyPair: { keyIndex: 0 } };
+        },
+      });
+      vm.runInContext(`
+        TRANSLATOR_SOURCE_MODES = { LARGE_FILE: 'large-file' };
+        currentSourceMode = 'large-file';
+        currentTranslatorSessionId = ${JSON.stringify(session.id)};
+        originalFileName = 'truyen-dai.txt';
+        translatedChunks = ['Bản dịch 1', '[LỖI CHUNK 2]\\nNguyên nhân: quota', 'Bản dịch 3'];
+        isTranslating = false;
+        useProxy = false;
+        useOllama = false;
+      `, context);
+
+      const retryResult = await vm.runInContext('retryIssueChunks({ source: "large-file" })', context);
+      expect(retryResult).toMatchObject({ ok: true, attempted: 1, succeeded: 1, failed: 0, remaining: 0 });
+
+      let downloadedBlob = null;
+      const anchor = { href: '', download: '', click() {} };
+      const downloadContext = {
+        Blob,
+        URL: {
+          createObjectURL(blob) {
+            downloadedBlob = blob;
+            return 'blob:retry-download-test';
+          },
+          revokeObjectURL() {},
+        },
+        document: {
+          body: { appendChild() {}, removeChild() {} },
+          createElement() { return anchor; },
+        },
+        showToast() {},
+        getTranslatorSession: store.getTranslatorSession,
+        getTranslatorSessionOutputParts: store.getTranslatorSessionOutputParts,
+        isChunkIssueRetryBusy: false,
+      };
+      vm.createContext(downloadContext);
+      vm.runInContext(
+        fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/ui/progress.js'), 'utf8'),
+        downloadContext,
+        { filename: 'public/translator-runtime/js/ui/progress.js' },
+      );
+      downloadContext.showToast = () => {};
+
+      const downloaded = await downloadContext.downloadTranslatorSessionResult(session.id, 'truyen-dai.txt');
+      expect(downloaded).toBe(true);
+      expect(anchor.download).toBe('truyen-dai.txt');
+      expect(await downloadedBlob.text()).toBe('Bản dịch 1\n\nBản dịch 2\n\nBản dịch 3');
+      expect(await downloadedBlob.text()).not.toContain('[LỖI CHUNK');
+    } finally {
+      await store.clearTranslatorLocalStoreForTests();
+    }
+  });
+
+  it('labels issue output honestly and locks the final download action while retry is writing', async () => {
+    let releaseRetry;
+    const context = loadChunkIssueRuntime({
+      async sendDirectTranslationAttempt(options) {
+        return new Promise(resolve => {
+          releaseRetry = () => resolve({
+            result: `Bản dịch ${options.chunkIndex + 1}`,
+            modelKeyPair: { keyIndex: 0 },
+          });
+        });
+      },
+    });
+    vm.runInContext(`
+      translatedChunks = ['Đã dịch 1', '[LỖI CHUNK 2]\\nNguyên nhân: quota'];
+      isTranslating = false;
+      useProxy = false;
+      useOllama = false;
+      document.getElementById('parallelCount').value = '1';
+      initChunkTracker(['Gốc 1', 'Gốc 2'], null, 'PROMPT');
+      trackChunkFailed(1, 'quota');
+      renderChunkIssuePanel();
+    `, context);
+
+    expect(context.elements.downloadResultBtnText.textContent).toBe('Tải bản có đánh dấu');
+    expect(context.elements.downloadResultBtn.disabled).toBe(false);
+    expect(context.elements.downloadResultStatus.textContent).toContain('còn chunk lỗi');
+
+    const retry = vm.runInContext('retryIssueChunks({ source: "text" })', context);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(context.elements.downloadResultBtnText.textContent).toBe('Đang hoàn thiện file…');
+    expect(context.elements.downloadResultBtn.disabled).toBe(true);
+    expect(context.elements.downloadResultBtn.getAttribute('aria-busy')).toBe('true');
+    expect(context.elements.downloadPartialBtn.disabled).toBe(true);
+    expect(context.elements.downloadResultStatus.textContent).toContain('đang được cập nhật');
+
+    releaseRetry();
+    await retry;
+    expect(context.elements.downloadResultBtnText.textContent).toBe('Tải bản dịch hoàn chỉnh');
+    expect(context.elements.downloadResultBtn.disabled).toBe(false);
+    expect(context.elements.downloadResultBtn.getAttribute('aria-busy')).toBe('false');
+    expect(context.elements.downloadPartialBtn.disabled).toBe(false);
+    expect(context.elements.downloadResultStatus.textContent).toContain('sẵn sàng tải');
+  });
+
+  it('stops before another wave and does not overwrite an in-flight chunk with a cancellation error', async () => {
+    const releases = [];
+    let context;
+    context = loadChunkIssueRuntime({
+      async waitForTranslatorRpmBatchPlan(options) {
+        context.rpmPlans.push(options);
+        return { capacity: 1 };
+      },
+      async sendDirectTranslationAttempt(options) {
+        context.directAttempts.push(options);
+        return new Promise(resolve => {
+          releases.push(() => resolve({
+            result: `Đã dịch lại ${options.chunkIndex + 1}`,
+            modelKeyPair: { keyIndex: 0 },
+          }));
+        });
+      },
+    });
+    vm.runInContext(`
+      currentTranslatorSessionId = 'cancel-session';
+      translatedChunks = [
+        '[LỖI CHUNK 1]\\nNguyên nhân: lỗi',
+        '[LỖI CHUNK 2]\\nNguyên nhân: lỗi',
+        '[LỖI CHUNK 3]\\nNguyên nhân: lỗi'
+      ];
+      isTranslating = false;
+      useProxy = false;
+      useOllama = false;
+      initChunkTracker(['Gốc 1', 'Gốc 2', 'Gốc 3'], null, 'PROMPT');
+      trackChunkFailed(0, 'lỗi');
+      trackChunkFailed(1, 'lỗi');
+      trackChunkFailed(2, 'lỗi');
+    `, context);
+
+    const retry = vm.runInContext('retryIssueChunks({ source: "text" })', context);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const cancelResult = vm.runInContext('cancelChunkIssueRetry()', context);
+    releases[0]();
+    const result = await retry;
+
+    expect(cancelResult).toEqual({ ok: true });
+    expect(result).toMatchObject({
+      ok: false,
+      attempted: 1,
+      succeeded: 0,
+      failed: 0,
+      remaining: 3,
+      cancelled: true,
+    });
+    expect(context.directAttempts).toHaveLength(1);
+    expect(context.sessionUpdates).toHaveLength(0);
+    expect(vm.runInContext('translatedChunks[0]', context)).toContain('Nguyên nhân: lỗi');
+  });
+
+  it('routes the legacy tracker retry-all action through the same RPM-governed job', async () => {
+    const context = loadChunkIssueRuntime();
+    vm.runInContext(`
+      translatedChunks = [
+        '[LỖI CHUNK 1]\\nNguyên nhân: lỗi',
+        '[LỖI CHUNK 2]\\nNguyên nhân: lỗi'
+      ];
+      isTranslating = false;
+      useProxy = false;
+      useOllama = false;
+      document.getElementById('parallelCount').value = '2';
+      initChunkTracker(['Gốc 1', 'Gốc 2'], null, 'PROMPT');
+      trackChunkFailed(0, 'lỗi');
+      trackChunkFailed(1, 'lỗi');
+    `, context);
+
+    const result = await vm.runInContext('retranslateAllFailed()', context);
+
+    expect(result).toMatchObject({ ok: true, attempted: 2, succeeded: 2, failed: 0 });
+    expect(context.rpmPlans.map(plan => plan.remainingChunks)).toEqual([2]);
+    expect(context.getMaxActiveDirectAttempts()).toBe(2);
+  });
+
+  it('assigns every proxy retry wave through the shared quota plan', async () => {
+    const assignedWaves = [];
+    const proxyAttempts = [];
+    const context = loadChunkIssueRuntime({
+      buildTranslatorWaveAssignments(indices, plan) {
+        assignedWaves.push({ indices: [...indices], capacity: plan.capacity });
+        return indices.map((chunkIndex, keyIndex) => ({ chunkIndex, keyIndex }));
+      },
+      async sendProxyTranslationAttempt(options) {
+        proxyAttempts.push(options);
+        return { result: `Proxy đã dịch ${options.chunkIndex + 1}` };
+      },
+    });
+    vm.runInContext(`
+      translatedChunks = [
+        '[LỖI CHUNK 1]\\nNguyên nhân: lỗi',
+        '[LỖI CHUNK 2]\\nNguyên nhân: lỗi',
+        '[LỖI CHUNK 3]\\nNguyên nhân: lỗi'
+      ];
+      isTranslating = false;
+      useProxy = true;
+      useOllama = false;
+      document.getElementById('parallelCount').value = '2';
+      initChunkTracker(['Gốc 1', 'Gốc 2', 'Gốc 3'], null, 'PROMPT');
+      trackChunkFailed(0, 'lỗi');
+      trackChunkFailed(1, 'lỗi');
+      trackChunkFailed(2, 'lỗi');
+    `, context);
+
+    const result = await vm.runInContext('retryIssueChunks({ source: "text" })', context);
+
+    expect(result).toMatchObject({ ok: true, attempted: 3, succeeded: 3, failed: 0 });
+    expect(assignedWaves).toEqual([
+      { indices: [0, 1], capacity: 2 },
+      { indices: [2], capacity: 1 },
+    ]);
+    expect(proxyAttempts.map(attempt => attempt.chunkIndex)).toEqual([0, 1, 2]);
+    expect(proxyAttempts.every(attempt => attempt.kind === 'manual_retry')).toBe(true);
+  });
+
+  it('reports completed and remaining chunks when quota planning fails after a finished wave', async () => {
+    let planCount = 0;
+    const context = loadChunkIssueRuntime({
+      async waitForTranslatorRpmBatchPlan(options) {
+        context.rpmPlans.push(options);
+        planCount += 1;
+        if (planCount > 1) throw new Error('quota planner unavailable');
+        return { capacity: 1 };
+      },
+    });
+    vm.runInContext(`
+      translatedChunks = [
+        '[LỖI CHUNK 1]\\nNguyên nhân: lỗi',
+        '[LỖI CHUNK 2]\\nNguyên nhân: lỗi'
+      ];
+      isTranslating = false;
+      useProxy = false;
+      useOllama = false;
+      initChunkTracker(['Gốc 1', 'Gốc 2'], null, 'PROMPT');
+      trackChunkFailed(0, 'lỗi');
+      trackChunkFailed(1, 'lỗi');
+    `, context);
+
+    const result = await vm.runInContext('retryIssueChunks({ source: "text" })', context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'failed',
+      attempted: 1,
+      succeeded: 1,
+      failed: 0,
+      remaining: 1,
+      cancelled: false,
+    });
+    expect(vm.runInContext('translatedChunks[0]', context)).toBe('Đã dịch lại 1');
+    expect(vm.runInContext('translatedChunks[1]', context)).toContain('[LỖI CHUNK 2]');
   });
 
   it('renders the issue panel with disabled actions while translating', () => {

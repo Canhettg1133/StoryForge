@@ -241,6 +241,161 @@ describe('phase10 translator runtime performance', () => {
     expect(toastMessage).toBe('Đã tải bản dịch đầy đủ.');
   });
 
+  it('downloads a processed session with failed chunks only as an honestly marked issue file', async () => {
+    let downloadedBlob = null;
+    let toastMessage = '';
+    const anchorEl = { href: '', download: '', click() {} };
+    const context = loadRuntimeContext([
+      'public/translator-runtime/js/ui/progress.js',
+    ], {
+      Blob,
+      URL: {
+        createObjectURL(blob) {
+          downloadedBlob = blob;
+          return 'blob:translator-issues-test';
+        },
+        revokeObjectURL() {},
+      },
+      document: {
+        body: { appendChild() {}, removeChild() {} },
+        createElement() { return anchorEl; },
+      },
+    });
+    context.showToast = (message) => { toastMessage = message; };
+    context.getTranslatorSession = async () => ({
+      completedChunks: 3,
+      failedChunks: 1,
+      isComplete: true,
+      outputRevision: 7,
+    });
+    context.getTranslatorSessionOutputParts = async () => [
+      'Chunk 1 đã dịch',
+      '\n\n',
+      '[LỖI CHUNK 2]\nNguyên nhân: quota',
+      '\n\n',
+      'Chunk 3 đã dịch',
+    ];
+
+    const downloaded = await context.downloadTranslatorSessionResult('session-issues', 'truyen.txt');
+
+    expect(downloaded).toBe(true);
+    expect(anchorEl.download).toBe('truyen_issues_1chunk.txt');
+    expect(await downloadedBlob.text()).toContain('[LỖI CHUNK 2]');
+    expect(toastMessage).toBe('Đã tải bản có đánh dấu 1 chunk lỗi.');
+  });
+
+  it('refuses to assemble a download while chunk retry is mutating output', async () => {
+    let downloadedBlob = null;
+    let outputReads = 0;
+    let toastMessage = '';
+    const context = loadRuntimeContext([
+      'public/translator-runtime/js/ui/progress.js',
+    ], {
+      Blob,
+      URL: {
+        createObjectURL(blob) {
+          downloadedBlob = blob;
+          return 'blob:should-not-exist';
+        },
+        revokeObjectURL() {},
+      },
+      document: {
+        body: { appendChild() {}, removeChild() {} },
+        createElement() { return { href: '', download: '', click() {} }; },
+      },
+      isChunkIssueRetryBusy: true,
+    });
+    context.showToast = (message) => { toastMessage = message; };
+    context.getTranslatorSession = async () => ({ isComplete: true, failedChunks: 0, outputRevision: 1 });
+    context.getTranslatorSessionOutputParts = async () => {
+      outputReads += 1;
+      return ['Không được đọc'];
+    };
+
+    const downloaded = await context.downloadTranslatorSessionResult('session-busy', 'truyen.txt');
+
+    expect(downloaded).toBe(false);
+    expect(outputReads).toBe(0);
+    expect(downloadedBlob).toBeNull();
+    expect(toastMessage).toContain('đang được cập nhật');
+  });
+
+  it('allows a stable history session to download while another session is retrying', async () => {
+    let downloadedBlob = null;
+    const anchorEl = { href: '', download: '', click() {} };
+    const context = loadRuntimeContext([
+      'public/translator-runtime/js/ui/progress.js',
+    ], {
+      Blob,
+      URL: {
+        createObjectURL(blob) {
+          downloadedBlob = blob;
+          return 'blob:unrelated-history';
+        },
+        revokeObjectURL() {},
+      },
+      document: {
+        body: { appendChild() {}, removeChild() {} },
+        createElement() { return anchorEl; },
+      },
+      isChunkIssueRetryBusy: true,
+      chunkIssueRetrySessionId: 'active-session',
+    });
+    context.showToast = () => {};
+    context.getTranslatorSession = async () => ({
+      isComplete: true,
+      failedChunks: 0,
+      outputRevision: 3,
+    });
+    context.getTranslatorSessionOutputParts = async () => ['Bản dịch lịch sử ổn định'];
+
+    const downloaded = await context.downloadTranslatorSessionResult('history-session', 'lich-su.txt');
+
+    expect(downloaded).toBe(true);
+    expect(anchorEl.download).toBe('lich-su.txt');
+    expect(await downloadedBlob.text()).toBe('Bản dịch lịch sử ổn định');
+  });
+
+  it('drops a stale download snapshot when output revision changes during assembly', async () => {
+    let downloadedBlob = null;
+    let sessionReads = 0;
+    let toastMessage = '';
+    const context = loadRuntimeContext([
+      'public/translator-runtime/js/ui/progress.js',
+    ], {
+      Blob,
+      URL: {
+        createObjectURL(blob) {
+          downloadedBlob = blob;
+          return 'blob:stale-download';
+        },
+        revokeObjectURL() {},
+      },
+      document: {
+        body: { appendChild() {}, removeChild() {} },
+        createElement() { return { href: '', download: '', click() {} }; },
+      },
+      isChunkIssueRetryBusy: false,
+    });
+    context.showToast = (message) => { toastMessage = message; };
+    context.getTranslatorSession = async () => {
+      const readIndex = sessionReads++;
+      return {
+        isComplete: true,
+        failedChunks: 0,
+        ...(readIndex === 0 ? {} : { outputRevision: 1 }),
+      };
+    };
+    context.getTranslatorSessionOutputParts = async () => ['Snapshot cũ'];
+
+    const downloaded = await context.downloadTranslatorSessionResult('session-race', 'truyen.txt');
+
+    expect(downloaded).toBe(false);
+    expect(sessionReads).toBe(2);
+    expect(downloadedBlob).toBeNull();
+    expect(toastMessage).toContain('vừa thay đổi');
+  });
+
   it('downloads the in-memory large-file output when checkpoint persistence becomes unavailable', async () => {
     let downloadedBlob = null;
     let persistedReadCount = 0;
@@ -280,6 +435,46 @@ describe('phase10 translator runtime performance', () => {
     expect(await downloadedBlob.text()).toBe('Bản dịch một\n\nBản dịch hai');
   });
 
+  it('marks an in-memory fallback download when persistence is unavailable and errors remain', async () => {
+    let downloadedBlob = null;
+    let toastMessage = '';
+    const anchorEl = { href: '', download: '', click() {} };
+    const context = loadRuntimeContext([
+      'public/translator-runtime/js/translation/source-reader.js',
+      'public/translator-runtime/js/ui/chunk-tracker.js',
+      'public/translator-runtime/js/ui/progress.js',
+    ], {
+      Blob,
+      TextEncoder,
+      TextDecoder,
+      URL: {
+        createObjectURL(blob) {
+          downloadedBlob = blob;
+          return 'blob:translator-memory-issues';
+        },
+        revokeObjectURL() {},
+      },
+      document: {
+        body: { appendChild() {}, removeChild() {} },
+        createElement() { return anchorEl; },
+        getElementById() { return null; },
+      },
+    });
+    context.showToast = (message) => { toastMessage = message; };
+    context.currentTranslatorSessionId = 'session-without-persistence';
+    context.currentTranslatorPersistenceAvailable = false;
+    context.originalFileName = 'story.txt';
+    context.completedChunks = 2;
+    context.translatedChunks = ['Bản dịch một', '[LỖI CHUNK 2]\nNguyên nhân: quota'];
+
+    const downloaded = await context.downloadCurrentLargeFileResult();
+
+    expect(downloaded).toBe(true);
+    expect(anchorEl.download).toBe('story_issues_1chunk.txt');
+    expect(await downloadedBlob.text()).toContain('[LỖI CHUNK 2]');
+    expect(toastMessage).toBe('Đã tải bản có đánh dấu 1 chunk lỗi.');
+  });
+
   it('runs chunk settlement callbacks as each request finishes instead of waiting for the whole batch', async () => {
     const context = loadRuntimeContext([
       'public/translator-runtime/js/translation/engine.js',
@@ -312,6 +507,32 @@ describe('phase10 translator runtime performance', () => {
       '1:fulfilled:fast-result',
       '0:fulfilled:slow-result',
     ]);
+  });
+
+  it('turns fulfilled empty translation results into chunk failures', async () => {
+    const context = loadRuntimeContext([
+      'public/translator-runtime/js/translation/errors.js',
+      'public/translator-runtime/js/translation/engine.js',
+    ]);
+    const results = [];
+
+    await context.settleChunkPromisesIndividually([
+      Promise.resolve(undefined),
+      Promise.resolve('   '),
+      Promise.resolve('Bản dịch hợp lệ'),
+    ], (result) => {
+      results.push(result);
+    });
+
+    expect(results[0]).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'INVALID_RESPONSE_FORMAT' },
+    });
+    expect(results[1]).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'INVALID_RESPONSE_FORMAT' },
+    });
+    expect(results[2]).toMatchObject({ status: 'fulfilled', value: 'Bản dịch hợp lệ' });
   });
 
   it('moves the chunk tracker through settled 100-row windows and reports the active range', () => {

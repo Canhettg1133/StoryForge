@@ -331,7 +331,10 @@ async function sendDirectTranslationAttempt(options = {}) {
     if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
 
     try {
-        const result = await translateChunk(text, modelKeyPair, temperature, options.requestOptions || {});
+        const result = await translateChunk(text, modelKeyPair, temperature, {
+            ...options.requestOptions,
+            chunkKeyUsage: { chunkIndex: options.chunkIndex, kind, partIndex: options.partIndex },
+        });
         return { result, modelKeyPair };
     } catch (error) {
         recordDirectAttemptFailure(error, modelKeyPair);

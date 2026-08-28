@@ -93,6 +93,15 @@ describe('phase10 continuity bar completion shortcut', () => {
   let root;
 
   beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('sf-preferred-provider', 'gemini_direct');
+    localStorage.setItem('sf-quality-mode', 'best');
+    localStorage.setItem('sf-chapter-completion-model-preferences', JSON.stringify({
+      version: 1,
+      scopes: {
+        gemini_direct: { model: '', prompted: true },
+      },
+    }));
     container = document.createElement('div');
     document.body.appendChild(container);
   });
@@ -141,6 +150,84 @@ describe('phase10 continuity bar completion shortcut', () => {
     expect(loadChapterCanon).toHaveBeenCalledWith(1, 11, 101);
     expect(loadCodex).toHaveBeenCalledWith(1);
     expect(container.textContent).toContain('áp dụng 2 thay đổi canon');
+  });
+
+  it('asks once for a completion model, saves it, and then keeps the action one-click', async () => {
+    localStorage.removeItem('sf-chapter-completion-model-preferences');
+    const ContinuityBar = await loadContinuityBar();
+    const { runChapterCompletion } = setStoreState();
+
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<ContinuityBar isMobileLayout={false} />);
+    });
+
+    const completeButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.includes('Hoàn thành chương'));
+    await act(async () => {
+      completeButton.click();
+    });
+
+    const dialog = document.querySelector('[role="dialog"][aria-labelledby^="chapter-completion-model-title"]');
+    expect(dialog).not.toBeNull();
+    expect(runChapterCompletion).not.toHaveBeenCalled();
+    expect(dialog.textContent).toContain('Flash');
+
+    const select = dialog.querySelector('select');
+    await act(async () => {
+      select.value = 'gemini-2.5-flash';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await act(async () => {
+      Array.from(dialog.querySelectorAll('button'))
+        .find((button) => button.textContent.includes('Hoàn thành chương'))
+        .click();
+      await Promise.resolve();
+    });
+
+    expect(runChapterCompletion).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem('sf-chapter-completion-model-preferences')))
+      .toMatchObject({
+        version: 1,
+        scopes: {
+          gemini_direct: { model: 'gemini-2.5-flash', prompted: true },
+        },
+      });
+
+    await act(async () => {
+      completeButton.click();
+      await Promise.resolve();
+    });
+    expect(runChapterCompletion).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('[role="dialog"][aria-labelledby^="chapter-completion-model-title"]')).toBeNull();
+  });
+
+  it('cancels the first-use prompt with Escape and restores focus to the completion button', async () => {
+    localStorage.removeItem('sf-chapter-completion-model-preferences');
+    const ContinuityBar = await loadContinuityBar();
+    const { runChapterCompletion } = setStoreState();
+
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<ContinuityBar isMobileLayout={false} />);
+    });
+
+    const completeButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.includes('Hoàn thành chương'));
+    await act(async () => {
+      completeButton.focus();
+      completeButton.click();
+    });
+    expect(document.querySelector('[role="dialog"][aria-labelledby^="chapter-completion-model-title"]')).not.toBeNull();
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+
+    expect(document.querySelector('[role="dialog"][aria-labelledby^="chapter-completion-model-title"]')).toBeNull();
+    expect(document.activeElement).toBe(completeButton);
+    expect(runChapterCompletion).not.toHaveBeenCalled();
+    expect(localStorage.getItem('sf-chapter-completion-model-preferences')).toBeNull();
   });
 
   it('does not render the desktop rebuild button', async () => {

@@ -225,6 +225,38 @@ describe('translator local store and queue', () => {
     expect(parts.join('')).toBe('Ba đã dịch\n\nBốn đã dịch');
   });
 
+  it('streams only compact output fields when assembling a large session download', async () => {
+    const session = await createTranslatorSessionFromFile(new TrackingFile(['Nguồn']), { chunkSize: 5 });
+    const rows = Array.from({ length: 120 }, (_, chunkIndex) => ({
+      chunkIndex,
+      status: 'done',
+      sourceText: `Nguồn ${chunkIndex} ${'x'.repeat(4096)}`,
+      outputText: `Bản dịch ${chunkIndex}`,
+    }));
+    await persistTranslatorChunkBatch(session.id, rows, {
+      totalChunks: rows.length,
+      totalChunksExact: true,
+      completedChunks: rows.length,
+      failedChunks: 0,
+      isComplete: true,
+    });
+
+    const originalGetAll = IDBIndex.prototype.getAll;
+    let indexGetAllCalls = 0;
+    IDBIndex.prototype.getAll = function (...args) {
+      indexGetAllCalls += 1;
+      return originalGetAll.apply(this, args);
+    };
+    try {
+      const parts = await getTranslatorSessionOutputParts(session.id);
+      expect(parts.join('')).toContain('Bản dịch 0\n\nBản dịch 1');
+      expect(parts.join('')).toContain('Bản dịch 119');
+      expect(indexGetAllCalls).toBe(0);
+    } finally {
+      IDBIndex.prototype.getAll = originalGetAll;
+    }
+  });
+
   it('counts preserved output plus the selected translation scope without completing early', () => {
     const summary = summarizeTranslatorChunks([
       { chunkIndex: 0, status: 'done', outputText: 'Chunk 1 đã dịch' },

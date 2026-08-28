@@ -147,6 +147,30 @@ describe('phase10 translator RPM limiter', () => {
     expect(customFanout).toEqual(agFanout);
   });
 
+  it('keeps one, two, three, and six-key waves within ten RPM at parallel ten, twenty, and thirty', () => {
+    const context = loadRuntime();
+    for (const keyCount of [1, 2, 3, 6]) {
+      for (const requestedParallel of [10, 20, 30]) {
+        vm.runInContext(`
+          useProxy = true;
+          activeTranslatorProvider = TRANSLATOR_PROVIDERS.AG_PROXY;
+          proxyApiKeys = Array.from({ length: ${keyCount} }, (_, index) => 'KEY_' + index);
+          rpmPerKey = 10;
+          translatorRpmTimestamps = {};
+        `, context);
+        const plan = vm.runInContext(
+          `getTranslatorRpmBatchPlan({ requestedParallel: ${requestedParallel}, remainingChunks: 30 })`,
+          context
+        );
+        const expectedCapacity = Math.min(requestedParallel, keyCount * 10, 30);
+        expect(plan.capacity).toBe(expectedCapacity);
+        expect(plan.keyAllocations.reduce((sum, count) => sum + count, 0)).toBe(expectedCapacity);
+        expect(Math.max(...plan.keyAllocations)).toBeLessThanOrEqual(10);
+        expect(Math.max(...plan.keyAllocations) - Math.min(...plan.keyAllocations)).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
   it('balances a main proxy wave across keys instead of filling one key first', () => {
     const context = loadRuntime();
     vm.runInContext(`
@@ -274,7 +298,10 @@ describe('phase10 translator RPM limiter', () => {
       customProxyApiKeys = ['CUSTOM_KEY'];
       customProxyProfile = { ...DEFAULT_CUSTOM_PROXY_PROFILE, baseUrl: 'https://proxy.test', defaultModel: '' };
       rpmPerKey = 5;
-      translateChunkViaProxy = async () => 'translated';
+      translateChunkViaProxy = async (_text, _temperature, _key, _allowRefresh, requestOptions = {}) => {
+        requestOptions.onProxyDispatch?.();
+        return 'translated';
+      };
     `, context);
 
     await expect(
@@ -288,6 +315,137 @@ describe('phase10 translator RPM limiter', () => {
     `, context);
     expect(sent).toEqual(expect.objectContaining({ result: 'translated', keyIndex: 0 }));
     expect(vm.runInContext('getTranslatorRpmRecentCount(TRANSLATOR_PROVIDERS.CUSTOM_PROXY, 0)', context)).toBe(1);
+  });
+
+  it('atomically holds the only proxy RPM slot before concurrent attempts can dispatch', async () => {
+    const context = loadRuntime();
+    const dispatched = [];
+    let releaseDispatch;
+    let releaseSlotWait;
+    const dispatchGate = new Promise((resolve) => {
+      releaseDispatch = resolve;
+    });
+    const slotWaitGate = new Promise((resolve) => {
+      releaseSlotWait = resolve;
+    });
+
+    context.sleep = async () => slotWaitGate;
+    context.translateChunkViaProxy = async (...args) => {
+      args[4]?.onProxyDispatch?.();
+      dispatched.push(args[0]);
+      await dispatchGate;
+      return 'translated';
+    };
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+      customProxyApiKeys = ['CUSTOM_KEY'];
+      customProxyProfile = { ...DEFAULT_CUSTOM_PROXY_PROFILE, baseUrl: 'https://proxy.test', defaultModel: 'custom-model' };
+      rpmPerKey = 1;
+      cancelRequested = false;
+      translatorRpmTimestamps = {};
+    `, context);
+
+    const attempts = [
+      context.sendProxyTranslationAttempt({ chunkIndex: 0, text: 'source-a', kind: 'retry' }),
+      context.sendProxyTranslationAttempt({ chunkIndex: 1, text: 'source-b', kind: 'retry' }),
+    ];
+    await new Promise((resolve) => setImmediate(resolve));
+    const observedDispatches = [...dispatched];
+    const observedRpm = vm.runInContext(
+      'getTranslatorRpmRecentCount(TRANSLATOR_PROVIDERS.CUSTOM_PROXY, 0)',
+      context
+    );
+
+    vm.runInContext('cancelRequested = true;', context);
+    releaseSlotWait();
+    releaseDispatch();
+    await Promise.allSettled(attempts);
+
+    expect(observedDispatches).toHaveLength(1);
+    expect(observedRpm).toBe(1);
+  });
+
+  it('cancels a proxy attempt waiting for RPM without dispatching or leaking a reservation', async () => {
+    const context = loadRuntime();
+    let releaseWait;
+    let transportCalls = 0;
+    const waitGate = new Promise((resolve) => {
+      releaseWait = resolve;
+    });
+    context.sleep = async () => waitGate;
+    context.translateChunkViaProxy = async (...args) => {
+      transportCalls += 1;
+      args[4]?.onProxyDispatch?.();
+      return 'translated';
+    };
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+      customProxyApiKeys = ['CUSTOM_KEY'];
+      customProxyProfile = { ...DEFAULT_CUSTOM_PROXY_PROFILE, baseUrl: 'https://proxy.test', defaultModel: 'custom-model' };
+      rpmPerKey = 1;
+      cancelRequested = false;
+      translatorRpmTimestamps = {};
+      recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.CUSTOM_PROXY, 0, Date.now(), 'main');
+    `, context);
+
+    const pending = context.sendProxyTranslationAttempt({ chunkIndex: 0, text: 'source', kind: 'retry' });
+    await new Promise((resolve) => setImmediate(resolve));
+    vm.runInContext('cancelRequested = true;', context);
+    releaseWait();
+
+    await expect(pending).rejects.toThrow('TRANSLATION_CANCELLED');
+    expect(transportCalls).toBe(0);
+    expect(vm.runInContext(
+      'getTranslatorRpmReservationCount(TRANSLATOR_PROVIDERS.CUSTOM_PROXY, 0)',
+      context
+    )).toBe(0);
+  });
+
+  it('waits for the later of the proxy cooldown and the full RPM window', async () => {
+    const context = loadRuntime();
+    let now = 1_000_000;
+    let waitedMs = 0;
+    class FakeDate extends Date {
+      static now() {
+        return now;
+      }
+    }
+    context.Date = FakeDate;
+    context.sleep = async (ms) => {
+      waitedMs += ms;
+      now += ms;
+    };
+    context.translateChunkViaProxy = async (...args) => {
+      args[4]?.onProxyDispatch?.();
+      return 'translated';
+    };
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+      customProxyApiKeys = ['CUSTOM_KEY'];
+      customProxyApiKey = 'CUSTOM_KEY';
+      customProxyProfile = { ...DEFAULT_CUSTOM_PROXY_PROFILE, baseUrl: 'https://proxy.test', defaultModel: 'custom-model' };
+      rpmPerKey = 1;
+      cancelRequested = false;
+      translatorRpmTimestamps = {};
+      recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.CUSTOM_PROXY, 0, Date.now(), 'main');
+      recordProxyKeyError('CUSTOM_KEY', 'RATE_LIMIT_429', 60000);
+    `, context);
+
+    await expect(context.sendProxyTranslationAttempt({
+      chunkIndex: 0,
+      text: 'source',
+      kind: 'retry',
+    })).resolves.toMatchObject({ result: 'translated', keyIndex: 0 });
+
+    expect(waitedMs).toBe(65_000);
+    expect(vm.runInContext('customProxyKeyHealthMap[0].disabledUntil', context)).toBeNull();
+    expect(vm.runInContext(
+      'getTranslatorRpmRecentCount(TRANSLATOR_PROVIDERS.CUSTOM_PROXY, 0)',
+      context
+    )).toBe(1);
   });
 
   it('keeps AG Proxy and Custom Proxy RPM buckets separate', () => {

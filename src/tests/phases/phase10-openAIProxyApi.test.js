@@ -275,6 +275,33 @@ describe('/api/openai-proxy', () => {
     vi.unstubAllGlobals();
   });
 
+  it('forwards upstream Retry-After for a single chat request', async () => {
+    const retryAt = new Date(Date.now() + 30_000).toUTCString();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: 'rate limited' }), {
+      status: 429,
+      headers: { 'content-type': 'application/json', 'retry-after': retryAt },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat',
+        baseUrl: 'https://proxy.example.com',
+        chatCompletionsPath: '/v1/chat/completions',
+        payload: { model: 'custom-model', messages: [{ role: 'user', content: 'hello' }] },
+      },
+      headers: { 'x-storyforge-upstream-key': 'test-key' },
+    });
+
+    try {
+      await handler(req, res);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(res.statusCode).toBe(429);
+    expect(res.headers['retry-after']).toBe(retryAt);
+  });
+
   it('logs only allowlisted usage metadata for admin activity labels', async () => {
     const insertMock = vi.fn(async () => ({ error: null }));
     const loggingHandler = createOpenAIProxyHandler({
@@ -491,6 +518,46 @@ describe('/api/openai-proxy', () => {
     expect(lines.map((line) => line.index).sort()).toEqual([0, 1]);
     expect(lines.every((line) => line.ok && line.status === 200)).toBe(true);
     vi.unstubAllGlobals();
+  });
+
+  it('adds parsed Retry-After seconds to each failed batch result', async () => {
+    const retryAt = new Date(Date.now() + 30_000).toUTCString();
+    let callCount = 0;
+    const fetchMock = vi.fn(async () => {
+      callCount += 1;
+      return new Response(JSON.stringify({ error: 'rate limited' }), {
+        status: 429,
+        headers: {
+          'content-type': 'application/json',
+          'retry-after': callCount === 1 ? '7' : retryAt,
+        },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat_stream_batch',
+        baseUrl: 'https://proxy.example.com',
+        chatCompletionsPath: '/v1/chat/completions',
+        payloads: [
+          { model: 'custom-model', messages: [{ role: 'user', content: 'a' }] },
+          { model: 'custom-model', messages: [{ role: 'user', content: 'b' }] },
+        ],
+      },
+      headers: { 'x-storyforge-upstream-key': 'test-key' },
+    });
+
+    try {
+      await handler(req, res);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const lines = res.body.trim().split('\n').map((line) => JSON.parse(line));
+    expect(lines[0]).toMatchObject({ status: 429, retryAfterSeconds: 7 });
+    expect(lines[1].status).toBe(429);
+    expect(lines[1].retryAfterSeconds).toBeGreaterThanOrEqual(25);
+    expect(lines[1].retryAfterSeconds).toBeLessThanOrEqual(30);
   });
 
   it('does not send a second JSON error after an upstream stream already flushed headers', async () => {

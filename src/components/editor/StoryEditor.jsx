@@ -22,7 +22,7 @@ import db from '../../services/db/database';
 import { getStoredSceneWordCount } from '../../services/projects/sceneWordCounts.js';
 import { createSceneAutosaveController } from './storyEditorAutosave';
 import { deriveChapterProgress } from './storyEditorMetrics.js';
-import { ChevronDown, ChevronRight, BookOpen, FileText, History, ListChecks, Pencil, Check, X, Settings, Copy, Type, Minus, Plus, RotateCcw, PanelLeft, Palette } from 'lucide-react';
+import { ChevronDown, ChevronRight, BookOpen, FileText, FileSearch, History, ListChecks, Loader2, Pencil, Check, X, Settings, Copy, Type, Minus, Plus, RotateCcw, PanelLeft, Palette } from 'lucide-react';
 import './StoryEditor.css';
 
 function isContentEmpty(html = '') {
@@ -128,6 +128,8 @@ function StoryEditor({
   viewMode = 'scene',
   onViewModeChange,
   onOpenChapters,
+  onOpenManuscriptReview,
+  manuscriptReviewRunning = false,
   aiDraftPreview = null,
   onAiDraftSaved,
 }) {
@@ -763,7 +765,7 @@ function StoryEditor({
             >
               {outlinePanelOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               <BookOpen size={14} />
-              <span>Dàn ý chương</span>
+              <span>Dàn ý</span>
             </button>
 
             <button
@@ -781,8 +783,28 @@ function StoryEditor({
               <span>Lịch sử thay đổi</span>
             </button>
 
-            {/* [MỚI] Nút bút chì — chỉ hiện khi panel mở */}
-            {outlinePanelOpen && !isEditingOutline && (
+            {onOpenManuscriptReview && (
+              <button
+                type="button"
+                className={`chapter-review-toggle ${manuscriptReviewRunning ? 'chapter-review-toggle--running' : ''}`}
+                onClick={onOpenManuscriptReview}
+                aria-label={manuscriptReviewRunning ? 'Mở chấm điểm bản thảo đang chạy' : 'Mở chấm điểm bản thảo'}
+                aria-busy={manuscriptReviewRunning || undefined}
+                title={manuscriptReviewRunning ? 'Chấm điểm đang chạy nền' : 'Mở chấm điểm bản thảo'}
+              >
+                {manuscriptReviewRunning
+                  ? <Loader2 size={14} className="spin" aria-hidden="true" />
+                  : <FileSearch size={14} aria-hidden="true" />}
+                <span aria-live="polite">
+                  {manuscriptReviewRunning ? 'Đang chấm' : 'Chấm điểm'}
+                </span>
+              </button>
+            )}
+          </div>
+
+          {outlinePanelOpen && (
+            <div className="chapter-outline-edit-toolbar">
+            {!isEditingOutline && (
               <button
                 className="chapter-outline-edit-btn"
                 onClick={handleStartEdit}
@@ -811,7 +833,8 @@ function StoryEditor({
                 </button>
               </div>
             )}
-          </div>
+            </div>
+          )}
 
           {outlinePanelOpen && (
             <div className="chapter-outline-body">

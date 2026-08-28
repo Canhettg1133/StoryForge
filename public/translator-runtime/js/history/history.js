@@ -625,6 +625,7 @@ async function loadFromHistory(id) {
             setCurrentTranslatorSession(session);
             if (!isLargeHistoryItem(item) && typeof getTranslatorSessionChunks === 'function') {
                 const rows = await getTranslatorSessionChunks(item.sessionId);
+                if (typeof resetTranslatorChunkKeyUsage === 'function') resetTranslatorChunkKeyUsage(rows);
                 if (rows.length > 0) {
                     const highestIndex = rows.reduce((max, row) => Math.max(max, Number(row.chunkIndex) || 0), -1);
                     const restoredCount = Math.max(Number(session.totalChunks) || 0, Number(item.totalChunks) || 0, highestIndex + 1);

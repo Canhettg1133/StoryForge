@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import {
@@ -34,7 +34,10 @@ import { prefetchRouteFromPath } from '../../routes/routeModules.js';
 import useProjectStore from '../../stores/projectStore';
 import useAIStore from '../../stores/aiStore';
 import useUIStore from '../../stores/uiStore';
+import useManuscriptReviewRunStore from '../../features/manuscriptReview/runStore.js';
 import './SceneEditor.css';
+
+const ManuscriptReviewPanel = lazy(() => import('../../features/manuscriptReview/ManuscriptReviewPanel.jsx'));
 
 const MOBILE_NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, needsProject: false, getPath: () => '/' },
@@ -81,6 +84,8 @@ export default function SceneEditor() {
   const location = useLocation();
   const navigate = useNavigate();
   const [editorInstance, setEditorInstance] = useState(null);
+  const [reviewOpened, setReviewOpened] = useState(false);
+  const reviewLauncher = useRef(null);
   const isMobileLayout = useMobileLayout(1180);
   const hasMobileProjectShell = useMobileLayout(900);
   const [mobilePanel, setMobilePanel] = useState(null);
@@ -88,6 +93,7 @@ export default function SceneEditor() {
   const [mobileAITab, setMobileAITab] = useState('ai');
   const [aiDraftPreview, setAiDraftPreview] = useState(null);
   const [aiActivity, setAiActivity] = useState(null);
+  const manuscriptReviewRun = useManuscriptReviewRunStore((state) => state.run);
   const clearAIOutput = useAIStore((state) => state.clearOutput);
   const sidebarCollapsed = useUIStore((state) => state.sidebarCollapsed);
   const toggleSidebar = useUIStore((state) => state.toggleSidebar);
@@ -127,6 +133,7 @@ export default function SceneEditor() {
 
   const handleViewModeChange = useCallback((mode) => {
     setMobilePanel(null);
+    setReviewOpened(false);
     setStoryEditorViewMode(mode);
   }, [setStoryEditorViewMode]);
 
@@ -170,6 +177,16 @@ export default function SceneEditor() {
     setEditorInstance(editor);
   }, []);
 
+  const openReview = useCallback((event) => {
+    reviewLauncher.current = event?.currentTarget || null;
+    setReviewOpened(true);
+  }, []);
+
+  const closeReview = useCallback(() => {
+    setReviewOpened(false);
+    requestAnimationFrame(() => reviewLauncher.current?.isConnected && reviewLauncher.current.focus());
+  }, []);
+
   const handleDraftPreviewChange = useCallback((preview) => {
     setAiDraftPreview(preview);
   }, []);
@@ -203,6 +220,7 @@ export default function SceneEditor() {
       : -1
   ), [aiActivity?.chapterId, chapters]);
   const hasAiActivity = !!aiActivity?.running;
+  const hasManuscriptReviewActivity = manuscriptReviewRun?.status === 'running';
   const mobileAIButtonLabel = aiDraftIsStreaming
     ? 'AI \u0111ang vi\u1ebft'
     : hasAiActivity && aiActivityChapterIndex >= 0
@@ -394,6 +412,8 @@ export default function SceneEditor() {
           viewMode={storyEditorViewMode}
           onViewModeChange={handleViewModeChange}
           onOpenChapters={handleOpenChapters}
+          onOpenManuscriptReview={openReview}
+          manuscriptReviewRunning={hasManuscriptReviewActivity}
           aiDraftPreview={scopedAiDraftPreview}
           onAiDraftSaved={handleAiDraftSaved}
         />
@@ -429,6 +449,30 @@ export default function SceneEditor() {
           </div>
         )}
         </aside>
+      )}
+
+      {!isReaderMode && reviewOpened && (
+        <div
+          className="scene-editor-review-modal"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) closeReview(); }}
+        >
+          <div className="scene-editor-review-dialog">
+            <Suspense fallback={<p className="scene-editor-panel-loading" role="status">Đang mở phân tích bản thảo…</p>}>
+              <ManuscriptReviewPanel
+                key={`${activeProjectId}:${activeSceneId}`}
+                editor={editorInstance}
+                project={currentProject}
+                scene={activeScene}
+                chapter={chapters.find((chapter) => chapter.id === activeChapterId)}
+                active={reviewOpened}
+                mobileOpen={reviewOpened}
+                onBack={closeReview}
+                onClose={closeReview}
+                onNavigateEvidence={closeReview}
+              />
+            </Suspense>
+          </div>
+        </div>
       )}
     </div>
   );

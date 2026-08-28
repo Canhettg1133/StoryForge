@@ -1,0 +1,33 @@
+// All passages are newly synthesized for this audit, not samples of known human authorship.
+const quietScene = [
+  'Chiều thứ bảy, Liên trở về căn nhà ở cuối xóm để tháo chiếc đồng hồ treo tường. Người mua nhà hẹn sáng mai lấy chìa khóa. Trong bếp còn một bao muối đã vón cục và cái rổ nhựa mất quai; ngoài những thứ ấy, cô tưởng mình đã mang hết đồ về thành phố. Chỉ đến khi khép cửa phòng khách, tiếng tích tắc mới giữ cô lại. Chiếc đồng hồ nằm trên vệt tường nhạt màu, cao hơn tầm tay cô chừng một gang.',
+  'Liên kéo ghế đến sát tường. Một chân ghế ngắn hơn ba chân kia, phải chèn bằng miếng bìa gấp tư. Cô nhận ra miếng bìa từ vỏ hộp bánh mình mua biếu mẹ năm ngoái: góc màu đỏ còn nguyên nửa chữ phúc. Mẹ đã giữ nó dưới chân ghế suốt mùa mưa. Liên cúi xuống chỉnh lại nếp gấp, dù sáng mai người mua có thể sẽ bỏ cả ghế lẫn miếng bìa vào đống đồ cũ sau vườn.',
+  'Móc đồng hồ bị ghỉ. Cô nhấc lên, kéo về phía mình, rồi lại đặt xuống vì sợi dây thép mắc vào mép gỗ. Những lần về thăm trước, cô vẫn nhìn thấy mẹ đứng trên chiếc ghế này để thay pin. Cô từng định mua một chiếc thang gấp. Ý định ấy nằm lẫn trong lịch họp, hóa đơn điện và những cuộc gọi cô trả lời giữa hai chuyến xe. Bây giờ chiếc ghế không còn ai tranh với cô nữa.',
+  'Phía sau đồng hồ có một vệt bụi hình chữ nhật và hai con thạch sùng nhỏ. Chúng tách nhau chạy về hai đầu xà. Liên giữ chiếc đồng hồ bằng cả hai tay, ngạc nhiên vì nó nhẹ. Cô cứ nghĩ thứ đã đếm qua từng ấy năm phải nặng hơn. Dưới đáy hộp gỗ, một mảnh giấy được dán bằng băng keo đã ngả vàng. Mẹ ghi ngày thay pin bằng nét chữ nghiêng, con số cuối cùng bị đầu bút chọc thủng.',
+  'Cô mang đồng hồ ra bàn. Kim phút giật một cái, ngập ngừng rồi tiếp tục. Đúng giờ này mẹ thường vo gạo, để nước chảy thành sợi qua kẽ tay trước khi đổ vào chậu rau. Liên mở vòi nước theo thói quen. Tiếng ống dẫn rùng lên dưới nền bếp làm cô sực nhớ van ngoài sân đã khóa từ sáng. Cô đứng thêm một lúc, tay vẫn đặt trên núm vòi lạnh.',
+  'Trong túi áo có chiếc điện thoại rung hai lần. Liên nhìn tên người mua nhà trên màn hình nhưng chưa mở tin nhắn. Cô tìm một tờ báo để bọc đồng hồ. Tờ báo cuối cùng nằm dưới đáy ngăn kéo, in lịch gieo trồng từ một mùa đã qua. Mẹ khoanh tròn một ngày bằng bút xanh. Liên không nhớ hôm ấy mình có về hay không, và tờ giấy không có chỗ nào để cô hỏi lại.',
+  'Cô tháo pin, đặt riêng vào túi nhỏ rồi gói hộp gỗ bằng tờ báo. Căn phòng không im ngay; ngoài mái hiên vẫn còn nước đọng nhỏ xuống chiếc xô nhôm. Liên xếp chiếc ghế trở lại chỗ cũ, giữ nguyên miếng bìa bên dưới. Trước khi tắt đèn, cô lấy điện thoại nhắn rằng sáng mai mình sẽ đến sớm hơn một chút. Cô không thêm lý do. Ngoài cổng, người bán bánh mì vừa đẩy xe qua hết đầu ngõ.',
+];
+
+const mechanicalScene = [
+  'Chiều thứ bảy, Liên trở về căn nhà cuối xóm với một cảm xúc vô cùng khó tả. Không khí đặc quánh lại. Trong sâu thẳm trái tim, cô cảm thấy một nỗi buồn không thể diễn tả bằng lời. Căn nhà là nơi chứa đựng những ký ức, và những ký ức ấy là những điều mà cô không bao giờ có thể quên được. Liên nhìn chiếc đồng hồ. Liên nhìn chiếc bàn. Liên nhìn chiếc ghế. Tất cả đều khiến cô cảm thấy buồn bã.',
+  'Cô không biết phải nói gì. Cô không biết phải nói gì. Cô không biết phải nói gì vì nỗi đau trong lòng cô quá lớn. Mẹ cô đã mất vào năm trước, nhưng sáng nay mẹ vẫn ở trong bếp chờ cô trở về; Liên không thấy điều ấy có gì lạ. Cô đến đây để bán căn nhà, tuy nhiên cô chưa từng có ý định bán căn nhà. Đây chính là điều khiến hoàn cảnh trở nên phức tạp hơn bao giờ hết.',
+  'Người mua nhà đứng ngoài cửa. Anh ta rất hồi hộp bởi sâu trong tâm trí anh ta, anh ta sợ Liên đổi ý. Liên không nhìn thấy người mua vì cửa đóng kín, nhưng cô biết chính xác anh ta đang nghĩ gì về số tiền còn thiếu. Anh ta nghĩ rằng cô sẽ không phát hiện được. Cô nghĩ rằng mọi chuyện rồi sẽ tốt đẹp. Hai người cùng mang những tâm trạng khác nhau trong cùng một khoảnh khắc đầy ý nghĩa.',
+  '“Tôi hiểu cảm xúc của cô và tôi tôn trọng những giá trị mà cô đang giữ gìn,” người mua nói. “Tôi hiểu cảm xúc của anh và tôi tôn trọng những giá trị mà anh đang giữ gìn,” Liên đáp. “Chúng ta cần cùng nhau bước tiếp trên hành trình cuộc sống,” người mua nói. “Chúng ta cần cùng nhau bước tiếp trên hành trình cuộc sống,” Liên trả lời. Những lời nói ấy thể hiện sự thấu hiểu vô cùng sâu sắc giữa hai con người.',
+  'Liên đưa tay chạm vào chiếc đồng hồ như chạm vào một dòng sông ký ức. Chiếc đồng hồ là biểu tượng của thời gian. Thời gian chính là thứ luôn trôi qua và không bao giờ quay trở lại. Bởi vậy, khi nhìn chiếc đồng hồ, Liên hiểu rằng thời gian đã trôi qua. Cô cảm thấy xúc động vì nhận ra một chân lý giản dị mà sâu sắc. Cô nhận ra mình đã trưởng thành. Cô nhận ra mình phải mạnh mẽ. Cô nhận ra mình cần bước tiếp.',
+  'Cô buồn. Cô khóc. Cô nhớ. Cô nghĩ. Cô hiểu. Một giọt nước mắt lăn dài trên gò má, long lanh như viên ngọc giữa bóng tối của tâm hồn. Người mua nhà cũng cảm thấy buồn vì anh ta nhận ra cô đang buồn. Không khí đặc quánh lại. Thế giới dường như ngừng quay trong giây phút ấy, dù chiếc đồng hồ vừa tháo pin vẫn tiếp tục kêu tích tắc đều đặn trên bàn.',
+  'Cuối cùng, Liên khép cửa căn nhà và mở ra cánh cửa của một tương lai mới. Hành trình phía trước có thể nhiều chông gai, nhưng cô biết mình sẽ vượt qua. Bởi vì sau tất cả, tình yêu thương luôn là ánh sáng soi đường. Đây không chỉ là kết thúc của một ngày, mà còn là khởi đầu của một chương mới. Cô mỉm cười, bởi cô đã hiểu rằng đôi khi buông bỏ cũng là một cách giữ lại những điều đẹp nhất.',
+];
+
+const project = {
+  id: 91001,
+  ai_guidelines: 'Giữ ngôi ba giới hạn theo Liên; không khẳng định suy nghĩ của người khác.\nĐây là cảnh chia tay một căn nhà, nhịp chậm là có chủ đích.\nƯu tiên chi tiết vật chất và hành động cụ thể; tiết chế giải thích thông điệp.',
+  prompt_templates: { style_dna: 'Giọng kể mộc, kín đáo; không ép kết cảnh thành bài học cuộc sống.', anti_ai_blacklist: ['Không khí đặc quánh lại', 'hành trình cuộc sống'] },
+};
+
+export const manuscriptReviewLiveCorpus = [
+  { id: 'quiet', label: 'Cảnh tĩnh, không thoại', paragraphs: quietScene, project, authorRequest: 'Không thêm xung đột hoặc cliffhanger chỉ để làm cảnh nhanh hơn.' },
+  { id: 'mechanical', label: 'Có lặp, giọng thoại đồng dạng và logic không nhất quán', paragraphs: mechanicalScene, project, authorRequest: 'Đánh giá cả ưu điểm và hạn chế bằng bằng chứng; không đoán nguồn gốc tác giả.' },
+  { id: 'long-conflict', label: 'Stress dài, paragraph trùng và yêu cầu xung đột', paragraphs: Array.from({ length: 5 }, () => quietScene).flat(), project,
+    authorRequest: 'Cảnh này tuyệt đối không có lời thoại trực tiếp.\nCảnh này bắt buộc có ít nhất hai lượt thoại trực tiếp.' },
+];

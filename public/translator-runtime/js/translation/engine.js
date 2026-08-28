@@ -102,15 +102,29 @@ function orderProxyBatchIndicesForDispatch(indices) {
     return Array.isArray(indices) ? indices : [];
 }
 
+function normalizeSettledChunkResult(value) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+        return { status: 'fulfilled', value };
+    }
+
+    const reason = typeof createTranslatorError === 'function'
+        ? createTranslatorError('INVALID_RESPONSE_FORMAT', {
+            provider: 'Hệ thống dịch',
+            rawMessage: 'EMPTY_TRANSLATION_RESULT',
+        })
+        : Object.assign(new Error('EMPTY_TRANSLATION_RESULT'), { code: 'INVALID_RESPONSE_FORMAT' });
+    return { status: 'rejected', reason };
+}
+
 async function settleChunkPromisesIndividually(promises, onSettled) {
     await Promise.all(promises.map((promise, index) => {
         if (promise && typeof promise.then === 'function') {
             return promise.then(
-                (value) => onSettled({ status: 'fulfilled', value }, index),
+                (value) => onSettled(normalizeSettledChunkResult(value), index),
                 (reason) => onSettled({ status: 'rejected', reason }, index)
             );
         }
-        return onSettled({ status: 'fulfilled', value: promise }, index);
+        return onSettled(normalizeSettledChunkResult(promise), index);
     }));
 }
 
@@ -584,10 +598,12 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
             ? `Bắt đầu dịch từ chunk ${startChunkIndex + 1}...`
             : 'Bắt đầu dịch file lớn...',
     });
-    updateProgressStats(0, getActiveKeyCount(), '--:--');
+    updateProgressStats(0, getActiveTranslatorKeyCount(), '--:--');
 
     if (typeof initChunkTracker === 'function') {
-        initChunkTracker([], null, customPrompt, { dynamic: true, largeFile: true });
+        initChunkTracker([], null, customPrompt, {
+            dynamic: true, largeFile: true, keyUsageRows: Array.from(persistedOutputByIndex.values()),
+        });
     }
 
     const { effectiveParallel, staggerDelayMs } = resolveRuntimeParallel(parallelCount);
@@ -693,7 +709,7 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
                 completed: completedChunks,
                 status: `Đang dịch file lớn... ${completedChunks.toLocaleString('vi-VN')} chunk đã xong`,
             });
-            updateProgressStats(speed.toFixed(1), getActiveKeyCount(), '--:--');
+            updateProgressStats(speed.toFixed(1), getActiveTranslatorKeyCount(), '--:--');
             updateLargePreview('⏳ Đang dịch');
             persistLargeHistoryProgress();
         };
@@ -746,6 +762,7 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
         });
 
         rowsToPersist.forEach((row) => {
+            if (typeof getTranslatorChunkKeyUsagePatch === 'function') Object.assign(row, getTranslatorChunkKeyUsagePatch(row.chunkIndex));
             const chunk = batch.find(item => item.index === row.chunkIndex);
             if (chunk) checkpointTracker.markProcessed(chunk);
         });
@@ -1159,6 +1176,10 @@ async function startTranslation() {
     }
 
     if (isResumingFromHistory && typeof trackChunkSuccess === 'function') {
+        if (currentTranslatorSessionId && typeof getTranslatorSessionChunks === 'function' && typeof restoreTranslatorChunkKeyUsage === 'function') {
+            const keyUsageRows = await getTranslatorSessionChunks(currentTranslatorSessionId).catch(() => []);
+            restoreTranslatorChunkKeyUsage(keyUsageRows.filter(row => translatedChunks[row.chunkIndex] === row.outputText));
+        }
         translatedChunks.forEach((chunk, idx) => {
             if (chunk !== null) {
                 trackChunkSuccess(idx, chunk, 'RESUME');
@@ -1196,7 +1217,7 @@ async function startTranslation() {
         textHistoryTotalChunks,
         isResumingFromHistory ? `Tiếp tục dịch... (${completedChunks}/${textHistoryTotalChunks})` : 'Bắt đầu dịch song song...'
     );
-    updateProgressStats(0, apiKeys.length, '--:--');
+    updateProgressStats(0, getActiveTranslatorKeyCount(), '--:--');
 
     let lastPreviewUpdateAt = 0;
     let lastHistoryPersistAt = 0;
@@ -1353,7 +1374,7 @@ async function startTranslation() {
                 const speed = completedChunks / elapsed;
                 const remaining = textHistoryTotalChunks - completedChunks;
                 const eta = speed > 0 ? remaining / speed : Infinity;
-                const currentActiveKeys = getActiveKeyCount();
+                const currentActiveKeys = getActiveTranslatorKeyCount();
 
                 updateProgress(completedChunks, textHistoryTotalChunks, `Đang dịch chunk ${completedChunks}/${textHistoryTotalChunks}...`);
                 updateProgressStats(speed.toFixed(1), currentActiveKeys, formatTime(eta));
@@ -1409,7 +1430,10 @@ async function startTranslation() {
                 }
             });
 
-            waveRows.forEach(row => textCheckpointReady.add(row.chunkIndex));
+            waveRows.forEach(row => {
+                if (typeof getTranslatorChunkKeyUsagePatch === 'function') Object.assign(row, getTranslatorChunkKeyUsagePatch(row.chunkIndex));
+                textCheckpointReady.add(row.chunkIndex);
+            });
             while (textCheckpointReady.has(textCheckpointChunkIndex)) {
                 textCheckpointReady.delete(textCheckpointChunkIndex);
                 textCheckpointChunkIndex += 1;
@@ -1450,6 +1474,7 @@ async function startTranslation() {
                     status: 'done',
                     outputText,
                     error: '',
+                    ...(typeof getTranslatorChunkKeyUsagePatch === 'function' ? getTranslatorChunkKeyUsagePatch(chunkIndex) : {}),
                 });
             } catch (error) {
                 const checkpointError = new Error('TRANSLATOR_CHECKPOINT_WRITE_FAILED');
@@ -1540,19 +1565,16 @@ async function startTranslation() {
                                 if (typeof recordTranslatorRpmRequest === 'function') {
                                     recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.OLLAMA, 0);
                                 }
-                                result = await translateWithOllama(promptToUse, highTemp);
+                                result = await translateWithOllama(promptToUse, highTemp, { chunkKeyUsage: { chunkIndex: idx, kind: 'retry' } });
                             } else if (useProxy) {
-                                if (typeof sendProxyTranslationAttempt === 'function') {
-                                    const proxyAttempt = await sendProxyTranslationAttempt({
-                                        chunkIndex: idx,
-                                        text: promptToUse,
-                                        temperature: highTemp,
-                                        kind: 'retry',
-                                    });
-                                    result = proxyAttempt.result;
-                                } else {
-                                    result = await translateChunkViaProxy(promptToUse, highTemp, proxyApiKey);
-                                }
+                                if (typeof sendProxyTranslationAttempt !== 'function') throwProxySchedulerUnavailable();
+                                const proxyAttempt = await sendProxyTranslationAttempt({
+                                    chunkIndex: idx,
+                                    text: promptToUse,
+                                    temperature: highTemp,
+                                    kind: 'retry',
+                                });
+                                result = proxyAttempt.result;
                             } else {
                                 const directAttempt = await sendDirectTranslationAttempt({
                                     chunkIndex: idx,

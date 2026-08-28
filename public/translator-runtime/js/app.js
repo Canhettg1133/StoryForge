@@ -415,6 +415,8 @@ storyForgeRuntimeGlobal.notifyStoryForgeTranslatorStatus = notifyStoryForgeTrans
 let activeTranslatorProvider = TRANSLATOR_PROVIDERS.GEMINI_DIRECT;
 let rpmPerKey = DEFAULT_TRANSLATOR_RPM_PER_KEY;
 let translatorRpmTimestamps = {};
+let translatorRpmReservations = {};
+let translatorRpmReservationId = 0;
 let translatorChunkKeyAssignments = {};
 
 const TRANSLATOR_PROMPT_SUPPLEMENTS = [
@@ -569,6 +571,10 @@ let customProxyApiKeys = [];
 let customProxyKeyHealthMap = {};
 const PROXY_RATE_LIMIT_COOLDOWN_MS = 10000;
 const PROXY_FORBIDDEN_COOLDOWN_MS = 10000;
+const PROXY_RATE_LIMIT_BACKOFF_BASE_MS = 5000;
+const PROXY_RATE_LIMIT_BACKOFF_MAX_MS = 60000;
+const PROXY_RATE_LIMIT_BACKOFF_JITTER_RATIO = 0.2;
+const TRANSLATOR_RPM_RESERVATION_POLL_MS = 250;
 
 function setActiveTranslatorProvider(provider) {
     const allowedProviders = Object.values(TRANSLATOR_PROVIDERS);
@@ -694,7 +700,6 @@ function isProxyKeyAvailable(keyIndex, provider = activeTranslatorProvider) {
 
     if (Date.now() >= health.disabledUntil) {
         health.disabledUntil = null;
-        health.errorCount = 0;
         health.lastError = '';
         return true;
     }
@@ -707,8 +712,17 @@ function recordProxyKeySuccess(proxyKey) {
     const health = initProxyKeyHealth(keyIndex);
     if (!health) return;
     health.successCount += 1;
-    health.errorCount = Math.max(0, health.errorCount - 1);
+    health.errorCount = 0;
     health.lastError = '';
+}
+
+function getProxyRateLimitBackoffMs(proxyKey, provider = activeTranslatorProvider) {
+    const keyIndex = getProxyKeyIndex(proxyKey, provider);
+    const health = initProxyKeyHealth(keyIndex, provider);
+    const exponent = Math.max(0, Number(health?.errorCount) || 0);
+    const baseMs = Math.min(PROXY_RATE_LIMIT_BACKOFF_MAX_MS, PROXY_RATE_LIMIT_BACKOFF_BASE_MS * (2 ** exponent));
+    const jitterMs = Math.floor(baseMs * PROXY_RATE_LIMIT_BACKOFF_JITTER_RATIO * Math.random());
+    return Math.min(PROXY_RATE_LIMIT_BACKOFF_MAX_MS, baseMs + jitterMs);
 }
 
 function recordProxyKeyError(proxyKey, errorType = 'UNKNOWN', cooldownMs = PROXY_RATE_LIMIT_COOLDOWN_MS) {
@@ -772,7 +786,7 @@ async function getProxyKeyForChunk(chunkIndex, options = {}) {
 }
 
 async function waitForProxyKeyForChunk(keys, provider, findAvailableKey) {
-    while (true) {
+    while (!cancelRequested) {
         const healthMap = getProxyKeyHealthMap();
         const now = Date.now();
         const keyWaits = keys.map((_, keyIndex) => {
@@ -783,7 +797,7 @@ async function waitForProxyKeyForChunk(keys, provider, findAvailableKey) {
 
         const nextKeyWait = keyWaits[0] || { keyIndex: 0, healthWaitMs: 0, rpmWaitMs: PROXY_RATE_LIMIT_COOLDOWN_MS, waitMs: PROXY_RATE_LIMIT_COOLDOWN_MS };
         const waitMs = nextKeyWait.waitMs || PROXY_RATE_LIMIT_COOLDOWN_MS;
-        const clampedWaitMs = Math.max(2000, Math.min(waitMs, PROXY_FORBIDDEN_COOLDOWN_MS));
+        const clampedWaitMs = Math.max(1000, waitMs);
         const waitSeconds = Math.ceil(clampedWaitMs / 1000);
 
         console.warn(`[ProxyKey] Tất cả ${keys.length} key đang cooldown/RPM. Tự động chờ ${waitSeconds}s...`);
@@ -799,16 +813,9 @@ async function waitForProxyKeyForChunk(keys, provider, findAvailableKey) {
 
         const retryKey = findAvailableKey();
         if (retryKey) return retryKey;
-
-        const forceUnlockTarget = keyWaits.find((item) => item.healthWaitMs > 0 && item.rpmWaitMs <= 0);
-        if (forceUnlockTarget) {
-            console.warn(`[ProxyKey] Ép mở khóa Key ${forceUnlockTarget.keyIndex + 1}; RPM vẫn được giữ an toàn.`);
-            const health = initProxyKeyHealth(forceUnlockTarget.keyIndex);
-            health.disabledUntil = null;
-            health.errorCount = 0;
-            return keys[forceUnlockTarget.keyIndex];
-        }
     }
+
+    throw new Error('TRANSLATION_CANCELLED');
 }
 
 // Get total number of available proxy keys
@@ -841,6 +848,19 @@ function getTranslatorRpmKeyCount(provider = getActiveTranslatorProviderId()) {
         return getActiveProxyKeys(provider).length;
     }
     return Array.isArray(apiKeys) ? apiKeys.filter((key) => String(key || '').trim()).length : 0;
+}
+
+function getActiveTranslatorKeyCount(provider = getActiveTranslatorProviderId()) {
+    if (provider === TRANSLATOR_PROVIDERS.OLLAMA) return 0;
+    if (provider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY || provider === TRANSLATOR_PROVIDERS.AG_PROXY) {
+        return getActiveProxyKeys(provider).reduce(
+            (count, _key, keyIndex) => count + (isProxyKeyAvailable(keyIndex, provider) ? 1 : 0),
+            0,
+        );
+    }
+    return typeof getActiveKeyCount === 'function'
+        ? getActiveKeyCount()
+        : getTranslatorRpmKeyCount(provider);
 }
 
 function getTranslatorRpmBucketId(provider, keyIndex) {
@@ -888,15 +908,30 @@ function getTranslatorRpmRecentCountByKind(provider, keyIndex, kind) {
         .length;
 }
 
+function getTranslatorRpmReservations(provider, keyIndex) {
+    const bucketId = getTranslatorRpmBucketId(provider, keyIndex);
+    if (!Array.isArray(translatorRpmReservations[bucketId])) {
+        translatorRpmReservations[bucketId] = [];
+    }
+    return translatorRpmReservations[bucketId];
+}
+
+function getTranslatorRpmReservationCount(provider, keyIndex) {
+    return getTranslatorRpmReservations(provider, keyIndex).length;
+}
+
 function getTranslatorRpmRemainingForKey(provider, keyIndex, limit = rpmPerKey) {
     const rpmLimit = normalizeTranslatorRpm(limit);
-    return Math.max(0, rpmLimit - getTranslatorRpmRecentCount(provider, keyIndex));
+    const used = getTranslatorRpmRecentCount(provider, keyIndex) + getTranslatorRpmReservationCount(provider, keyIndex);
+    return Math.max(0, rpmLimit - used);
 }
 
 function getTranslatorRpmWaitMsForKey(provider, keyIndex, limit = rpmPerKey) {
     const rpmLimit = normalizeTranslatorRpm(limit);
     const timestamps = pruneTranslatorRpmBucket(provider, keyIndex);
-    if (timestamps.length < rpmLimit) return 0;
+    const reservationCount = getTranslatorRpmReservationCount(provider, keyIndex);
+    if (timestamps.length + reservationCount < rpmLimit) return 0;
+    if (reservationCount > 0) return TRANSLATOR_RPM_RESERVATION_POLL_MS;
     const now = Date.now();
     const oldest = Math.min(...timestamps.map((entry) => entry.timestamp));
     return Math.max(1000, TRANSLATOR_RPM_WINDOW_MS - (now - oldest));
@@ -924,6 +959,42 @@ function recordTranslatorRpmRequest(provider = getActiveTranslatorProviderId(), 
         timestamp,
         kind: String(kind || 'main'),
     });
+}
+
+function reserveTranslatorRpmSlot(provider, keyIndex, kind = 'main') {
+    if (!isTranslatorRpmKeyAvailable(provider, keyIndex)) return null;
+    const reservation = {
+        id: ++translatorRpmReservationId,
+        provider,
+        keyIndex,
+        kind: String(kind || 'main'),
+    };
+    getTranslatorRpmReservations(provider, keyIndex).push(reservation);
+    return reservation;
+}
+
+function removeTranslatorRpmReservation(reservation) {
+    if (!reservation) return false;
+    const bucket = getTranslatorRpmReservations(reservation.provider, reservation.keyIndex);
+    const index = bucket.findIndex((entry) => entry.id === reservation.id);
+    if (index < 0) return false;
+    bucket.splice(index, 1);
+    return true;
+}
+
+function releaseTranslatorRpmReservation(reservation) {
+    return removeTranslatorRpmReservation(reservation);
+}
+
+function commitTranslatorRpmReservation(reservation, timestamp = Date.now()) {
+    if (!removeTranslatorRpmReservation(reservation)) return false;
+    recordTranslatorRpmRequest(
+        reservation.provider,
+        reservation.keyIndex,
+        timestamp,
+        reservation.kind,
+    );
+    return true;
 }
 
 function distributeTranslatorWaveAcrossKeys(targetWaveSize, keyCount, rpmLimit) {
@@ -1111,6 +1182,72 @@ function preflightProxyTranslationAttempt(proxyKey) {
     };
 }
 
+function tryReserveProxyTranslationSlot(chunkIndex, options = {}) {
+    const keys = getActiveProxyKeys();
+    if (!keys.length) return null;
+    const provider = getProxyProviderId(activeTranslatorProvider);
+    const assignedIndex = getAssignedTranslatorChunkKey(chunkIndex, provider);
+    const preferredIndex = Number.isInteger(options.preferredKeyIndex)
+        ? normalizeProxyKeyIndex(options.preferredKeyIndex, keys.length)
+        : (assignedIndex != null ? assignedIndex : getProxyPreferredKeyIndexForChunk(chunkIndex, keys.length));
+    const kind = String(options.kind || 'main');
+
+    for (let offset = 0; offset < keys.length; offset += 1) {
+        const keyIndex = (preferredIndex + offset) % keys.length;
+        if (!isProxyKeyAvailable(keyIndex, provider)) continue;
+        const reservation = reserveTranslatorRpmSlot(provider, keyIndex, kind);
+        if (!reservation) continue;
+        return {
+            provider,
+            keyIndex,
+            proxyKey: keys[keyIndex],
+            reservation,
+        };
+    }
+
+    return null;
+}
+
+function getProxyTranslationSlotWaitMs(provider, keyCount) {
+    const healthMap = getProxyKeyHealthMap(provider);
+    const now = Date.now();
+    let earliestWaitMs = Infinity;
+    for (let keyIndex = 0; keyIndex < keyCount; keyIndex += 1) {
+        const healthWaitMs = Math.max(0, Number(healthMap[keyIndex]?.disabledUntil || 0) - now);
+        const rpmWaitMs = Math.max(0, getTranslatorRpmWaitMsForProviderKey(provider, keyIndex));
+        earliestWaitMs = Math.min(earliestWaitMs, Math.max(healthWaitMs, rpmWaitMs));
+    }
+    return Number.isFinite(earliestWaitMs) && earliestWaitMs > 0
+        ? earliestWaitMs
+        : TRANSLATOR_RPM_RESERVATION_POLL_MS;
+}
+
+async function acquireProxyTranslationSlot(chunkIndex, options = {}) {
+    const provider = getProxyProviderId(activeTranslatorProvider);
+    const keyCount = getActiveProxyKeys(provider).length;
+    while (!cancelRequested) {
+        const slot = tryReserveProxyTranslationSlot(chunkIndex, options);
+        if (slot) return slot;
+
+        const waitMs = getProxyTranslationSlotWaitMs(provider, keyCount);
+        const waitSeconds = Math.max(1, Math.ceil(waitMs / 1000));
+        if (typeof updateTranslationRuntimeStatus === 'function') {
+            updateTranslationRuntimeStatus(`Đang chờ proxy key/RPM (${waitSeconds}s)...`);
+        }
+        if (typeof sleepWithCountdown === 'function') {
+            await sleepWithCountdown(waitMs, '⏳ Chờ proxy key/RPM');
+        } else if (typeof sleep === 'function') {
+            await sleep(waitMs);
+        } else if (typeof setTimeout === 'function') {
+            await new Promise((resolve) => setTimeout(resolve, waitMs));
+        } else {
+            throw new Error('PROXY_SCHEDULER_WAIT_UNAVAILABLE');
+        }
+    }
+
+    throw new Error('TRANSLATION_CANCELLED');
+}
+
 async function sendProxyTranslationAttempt(options = {}) {
     const chunkIndex = Number.isFinite(Number(options.chunkIndex))
         ? Math.max(0, Math.trunc(Number(options.chunkIndex)))
@@ -1121,26 +1258,33 @@ async function sendProxyTranslationAttempt(options = {}) {
 
     if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
 
-    const proxyKey = typeof getProxyKeyForChunk === 'function'
-        ? await getProxyKeyForChunk(chunkIndex, {
-            preferredKeyIndex: options.preferredKeyIndex,
-            stickToAssignedKey: ['retry', 'manual_retry', 'split_retry'].includes(kind),
-        })
-        : proxyApiKey;
-    const attempt = preflightProxyTranslationAttempt(proxyKey);
+    preflightProxyTranslationAttempt();
+    const attempt = await acquireProxyTranslationSlot(chunkIndex, {
+        preferredKeyIndex: options.preferredKeyIndex,
+        kind,
+    });
 
-    if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
-
-    if (typeof recordTranslatorRpmRequest === 'function') {
-        recordTranslatorRpmRequest(attempt.provider, attempt.keyIndex, Date.now(), kind);
+    if (cancelRequested) {
+        releaseTranslatorRpmReservation(attempt.reservation);
+        throw new Error('TRANSLATION_CANCELLED');
     }
+
     assignTranslatorChunkKey(chunkIndex, attempt.keyIndex, attempt.provider);
-    if (typeof trackChunkProxyKey === 'function') {
-        trackChunkProxyKey(chunkIndex, attempt.keyIndex);
-    }
-
+    let dispatched = false;
+    const existingOnProxyDispatch = options.requestOptions?.onProxyDispatch;
+    const onProxyDispatch = () => {
+        if (!dispatched) {
+            commitTranslatorRpmReservation(attempt.reservation, Date.now());
+            dispatched = true;
+        }
+        if (typeof existingOnProxyDispatch === 'function') existingOnProxyDispatch();
+    };
     try {
-        const result = await translateChunkViaProxy(text, temperature, attempt.proxyKey, true, options.requestOptions || {});
+        const result = await translateChunkViaProxy(text, temperature, attempt.proxyKey, true, {
+            ...options.requestOptions,
+            onProxyDispatch,
+            chunkKeyUsage: { chunkIndex: options.chunkIndex, kind, partIndex: options.partIndex },
+        });
         return {
             result,
             proxyKey: attempt.proxyKey,
@@ -1154,6 +1298,8 @@ async function sendProxyTranslationAttempt(options = {}) {
             error.proxyProvider = attempt.provider;
         }
         throw error;
+    } finally {
+        if (!dispatched) releaseTranslatorRpmReservation(attempt.reservation);
     }
 }
 

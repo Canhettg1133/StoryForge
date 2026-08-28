@@ -226,6 +226,13 @@ function extractResultFromThinking(thinkingText) {
 
 // Translate with Ollama API
 async function translateWithOllama(text, temperature = 0.7, requestOptions = {}) {
+    const send = options => requestOllamaChunkTranslation(text, temperature, options);
+    return typeof withTranslatorChunkKeyUsage === 'function'
+        ? withTranslatorChunkKeyUsage(requestOptions, send)
+        : send(requestOptions);
+}
+
+async function requestOllamaChunkTranslation(text, temperature, requestOptions) {
     const request = typeof normalizeTranslationRequest === 'function'
         ? normalizeTranslationRequest(text)
         : { systemText: '', userText: String(text || ''), sourceText: String(text || '') };
@@ -278,6 +285,9 @@ async function translateWithOllama(text, temperature = 0.7, requestOptions = {})
 
     let response;
     try {
+        if (typeof requestOptions.onChunkKeyUsage === 'function') {
+            requestOptions.onChunkKeyUsage({ provider: 'ollama', model, keyless: true });
+        }
         response = await fetch(`${url}/api/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

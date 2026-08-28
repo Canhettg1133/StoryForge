@@ -102,6 +102,9 @@ export const TASK_TYPES = {
   STYLE_ANALYZE: 'style_analyze',
   STYLE_WRITE: 'style_write',
   QA_CHECK: 'qa_check',
+  PROSE_AI_SIGNALS: 'prose_ai_signals',
+  PROSE_STYLE_ADHERENCE: 'prose_style_adherence',
+  PROSE_LITERARY_SCORE: 'prose_literary_score',
   CHECK_CONFLICT: 'check_conflict',
   FREE_PROMPT: 'free_prompt',
   // Phase 3 — Memory

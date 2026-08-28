@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
-import { indexedDB } from 'fake-indexeddb';
+import { IDBKeyRange, indexedDB } from 'fake-indexeddb';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const runtimeSource = fs.readFileSync(
@@ -33,6 +33,7 @@ async function createRuntime() {
   const context = vm.createContext({
     console,
     Date,
+    IDBKeyRange,
     indexedDB,
     Math,
     Promise,

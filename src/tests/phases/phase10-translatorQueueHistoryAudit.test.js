@@ -74,6 +74,20 @@ describe('translator queue/history audit', () => {
     expect(historySource).toContain('getTranslatorSessionOutputParts');
   });
 
+  it('routes queue downloads through the same issue-aware stable snapshot guard', () => {
+    const fileHandlerSource = readRuntime('public/translator-runtime/js/ui/file-handler.js');
+    const downloadQueueBody = getFunctionBody(fileHandlerSource, 'downloadQueuedTranslatorResult');
+    const renderQueueBody = getFunctionBody(fileHandlerSource, 'renderTranslationQueue');
+    const loadSessionBody = getFunctionBody(fileHandlerSource, 'loadTranslatorSessionIntoWorkspace');
+
+    expect(downloadQueueBody).toContain('downloadTranslatorSessionResult');
+    expect(downloadQueueBody).not.toContain('downloadBlobParts(parts');
+    expect(renderQueueBody).toContain('session?.failedChunks');
+    expect(renderQueueBody).toContain('Tải bản có đánh dấu');
+    expect(loadSessionBody).toContain('updateChunkIssueDownloadAction');
+    expect(loadSessionBody).toContain('failedCount: session.failedChunks');
+  });
+
   it('loads local storage before the engine and exposes start search plus queue UI', () => {
     const html = readRuntime('public/translator-runtime/index.html');
     const initSource = readRuntime('public/translator-runtime/js/init.js');
@@ -113,6 +127,28 @@ describe('translator queue/history audit', () => {
     expect(queueMainRule).toContain('overflow: hidden;');
     expect(queueNameRule).toContain('display: block;');
     expect(queueNameRule).toContain('text-overflow: ellipsis;');
+  });
+
+  it('keeps translator history names visible when mobile cards switch to a column', () => {
+    const css = readRuntime('public/translator-runtime/style.css');
+    const historyStyles = css.slice(css.indexOf('HISTORY PANEL'), css.indexOf('OLLAMA LOCAL API PANEL'));
+    const mobileStyles = historyStyles.slice(historyStyles.indexOf('@media (max-width: 768px)'));
+    const mobileHistoryInfoRule = getCssRuleBody(mobileStyles, '.history-item .history-info');
+
+    expect(mobileHistoryInfoRule).toContain('flex: none;');
+    expect(mobileHistoryInfoRule).toContain('width: 100%;');
+  });
+
+  it('keeps queue names at their content height when mobile cards switch to a column', () => {
+    const css = readRuntime('public/translator-runtime/style.css');
+    const queueStyles = css.slice(css.indexOf('TRANSLATION QUEUE'), css.indexOf('PREVIEW SECTION'));
+    const mobileStyles = queueStyles.slice(queueStyles.indexOf('@media (max-width: 720px)'));
+    const mobileQueueRule = mobileStyles.match(/\.translation-queue-item\s*\{([^}]*)\}/)?.[1] || '';
+    const mobileQueueMainRule = mobileStyles.match(/\.translation-queue-item__main\s*\{([^}]*)\}/)?.[1] || '';
+
+    expect(mobileQueueRule).toContain('flex-direction: column;');
+    expect(mobileQueueRule).toContain('align-items: stretch;');
+    expect(mobileQueueMainRule).toContain('flex: none;');
   });
 
   it('keeps selected and dropped story files routed into the translator queue', () => {

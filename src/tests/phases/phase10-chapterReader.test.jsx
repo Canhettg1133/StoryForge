@@ -48,7 +48,16 @@ vi.mock('../../components/ai/AISidebar', () => ({
 }));
 
 vi.mock('../../components/editor/StoryEditor', () => ({
-  default: ({ viewMode }) => <div data-testid="story-editor-mode">{viewMode}</div>,
+  default: ({ viewMode, onOpenManuscriptReview }) => (
+    <div>
+      <div data-testid="story-editor-mode">{viewMode}</div>
+      {onOpenManuscriptReview && <button type="button" onClick={onOpenManuscriptReview}>Chấm điểm</button>}
+    </div>
+  ),
+}));
+
+vi.mock('../../features/manuscriptReview/ManuscriptReviewPanel.jsx', () => ({
+  default: ({ onClose }) => <button type="button" onClick={onClose}>Đóng chấm điểm</button>,
 }));
 
 function createScene(overrides = {}) {
@@ -249,6 +258,22 @@ describe('phase10 responsive chapter reader controls', () => {
     expect(container.textContent).toContain('AI Sidebar');
     expect(aiPanel.classList.contains('is-open')).toBe(false);
     expect(aiPanel.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('opens and closes manuscript scoring as an overlay without replacing the AI sidebar', async () => {
+    await renderSceneEditor(1400);
+
+    const scoreButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.trim() === 'Chấm điểm');
+    await act(async () => scoreButton.click());
+    await vi.waitFor(() => expect(container.querySelector('.scene-editor-review-modal')).not.toBeNull());
+
+    expect(container.querySelector('.scene-editor-review-dialog')).not.toBeNull();
+    expect(container.textContent).toContain('AI Sidebar');
+    const closeButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.trim() === 'Đóng chấm điểm');
+    await act(async () => closeButton.click());
+    await vi.waitFor(() => expect(container.querySelector('.scene-editor-review-modal')).toBeNull());
   });
 
   it('keeps reader mode active when the chapter changes', async () => {

@@ -81,6 +81,9 @@ const USAGE_TASK_METADATA = {
   [TASK_TYPES.CONTINUITY_CHECK]: { taskGroup: 'story_analysis', taskLabel: 'Kiểm tra liên tục truyện' },
   [TASK_TYPES.CHECK_CONFLICT]: { taskGroup: 'story_analysis', taskLabel: 'Kiểm tra mâu thuẫn' },
   [TASK_TYPES.QA_CHECK]: { taskGroup: 'story_analysis', taskLabel: 'Kiểm tra chất lượng truyện' },
+  [TASK_TYPES.PROSE_AI_SIGNALS]: { taskGroup: 'story_analysis', taskLabel: 'Dấu hiệu văn phong máy móc' },
+  [TASK_TYPES.PROSE_STYLE_ADHERENCE]: { taskGroup: 'story_analysis', taskLabel: 'Đánh giá bám yêu cầu văn phong' },
+  [TASK_TYPES.PROSE_LITERARY_SCORE]: { taskGroup: 'story_analysis', taskLabel: 'Chấm văn tham khảo' },
   [TASK_TYPES.EXTRACT_TERMS]: { taskGroup: 'story_analysis', taskLabel: 'Rút trích thuật ngữ' },
   [TASK_TYPES.FEEDBACK_EXTRACT]: { taskGroup: 'story_analysis', taskLabel: 'Rút trích phản hồi' },
   [TASK_TYPES.SUGGEST_UPDATES]: { taskGroup: 'story_analysis', taskLabel: 'Gợi ý cập nhật truyện' },
@@ -561,7 +564,7 @@ function createOllamaRequestSignal(externalSignal, timeoutMs = OLLAMA_TIMEOUT_MS
 // ================================
 // Gemini Proxy (OpenAI-compatible)
 // ================================
-async function callOpenAIProxy({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode, safetyMode, proxyProfileId, usageContext }) {
+async function callOpenAIProxy({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode, safetyMode, proxyProfileId, usageContext, allowTransportFallback = true }) {
   const proxyProfile = getActiveOpenAIProxyProfile(proxyProfileId);
   const proxyErrorContext = {
     provider: PROVIDERS.OPENAI_PROXY,
@@ -621,7 +624,7 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
       signal,
     });
 
-    if (target.mode === 'relay' && shouldFallbackOpenAIProxyRelay(response)) {
+    if (allowTransportFallback && target.mode === 'relay' && shouldFallbackOpenAIProxyRelay(response)) {
       const directTarget = resolveOpenAIProxyDirectRequest(proxyProfile, 'chat');
       response = await fetch(directTarget.url, {
         method: 'POST',
@@ -1345,7 +1348,7 @@ class AIService {
     return refusalPhrases.some(phrase => startOfProse.includes(phrase));
   }
 
-  send({ taskType, messages, stream = true, onToken, onComplete, onError, onRouteChange, routeOptions = {}, nsfwMode, superNsfwMode, skipRefusal = false, chatSafetyOff = false, allowConcurrent = false, autoContinueOnIncomplete, maxContinuationAttempts = MAX_WRITING_CONTINUATIONS }) {
+  send({ taskType, messages, stream = true, onToken, onComplete, onError, onRouteChange, routeOptions = {}, nsfwMode, superNsfwMode, skipRefusal = false, chatSafetyOff = false, allowConcurrent = false, autoContinueOnIncomplete, maxContinuationAttempts = MAX_WRITING_CONTINUATIONS, allowTransportFallback = true, preserveStructuredOutput = false }) {
     if (!this._router || typeof this._router.route !== 'function') {
       const error = normalizeAIError({
         code: AI_ERROR_CODES.AI_ROUTER_NOT_INITIALIZED,
@@ -1402,6 +1405,7 @@ class AIService {
     controller.signal.addEventListener('abort', handleAbort, { once: true });
 
     const runProviderCall = (routeMeta, callMessages, handlers = {}) => getCallFn(routeMeta.provider)({
+      allowTransportFallback,
       model: routeMeta.model,
       messages: callMessages,
       stream,
@@ -1479,7 +1483,7 @@ class AIService {
       const cleanThoughts = (t) => t.replace(/antmlThinking[\s\S]*?(?=\n\n|\[Location|\[Date|\[Time|\[|$)/i, '').trim();
       const cleanMetadata = (t) => t.replace(/^\[.*?\]\n*/gm, '').trim();
 
-      processedText = cleanMetadata(cleanThoughts(processedText));
+      if (!preserveStructuredOutput) processedText = cleanMetadata(cleanThoughts(processedText));
 
       if (!processedText) {
         settleErrorOnce({ code: AI_ERROR_CODES.EMPTY_STREAM, rawMessage: 'EMPTY_STREAM' }, routeMeta);
@@ -1510,6 +1514,7 @@ class AIService {
           onToken?.('', '[ENI đang bị nhắc nhở... (Turn 4-5)]');
 
           const apology = await getCallFn(route.provider)({
+            allowTransportFallback,
             model: route.model, messages: rebukeMessages, stream: false, signal: controller.signal,
             nsfwMode: true,
             proxyProfileId: route.proxyProfileId,
@@ -1527,6 +1532,7 @@ class AIService {
           ];
 
           await getCallFn(route.provider)({
+            allowTransportFallback,
             model: route.model, messages: finalMessages, stream, signal: controller.signal,
             proxyProfileId: route.proxyProfileId,
             usageContext,
@@ -1595,6 +1601,7 @@ class AIService {
         try {
           onToken?.('', '[Bị chặn bởi bộ lọc. Đang thực hiện Leo thang Rebuke...]');
           await getCallFn(route.provider)({
+            allowTransportFallback,
             model: route.model, messages: rebukeMessages, stream, signal: controller.signal,
             proxyProfileId: route.proxyProfileId,
             usageContext,
@@ -1618,6 +1625,7 @@ class AIService {
           try {
             onRouteChange?.(fb);
             await getCallFn(fb.provider)({
+              allowTransportFallback,
               model: fb.model, messages, stream, signal: controller.signal,
               proxyProfileId: fb.proxyProfileId,
               usageContext,
@@ -1637,6 +1645,7 @@ class AIService {
     };
 
     getCallFn(route.provider)({
+      allowTransportFallback,
       model: route.model, messages, stream, signal: controller.signal,
       proxyProfileId: route.proxyProfileId,
       usageContext,
@@ -1719,6 +1728,13 @@ class AIService {
       return { success: false, error: formatTestConnectionError(err, provider) };
     }
   }
+}
+
+// Independent consumers own their cancellation lifecycle; the default service stays unchanged.
+export function createAIService({ router = modelRouter } = {}) {
+  const service = new AIService();
+  service.setRouter(router);
+  return service;
 }
 
 const aiService = new AIService();

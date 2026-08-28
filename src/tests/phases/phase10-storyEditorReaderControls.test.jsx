@@ -148,7 +148,7 @@ describe('phase10 StoryEditor reader controls', () => {
     const toggleRow = container.querySelector('.chapter-outline-toggle-row');
     const buttons = Array.from(toggleRow.querySelectorAll('button'));
     expect(buttons.map((button) => button.textContent.trim())).toEqual(expect.arrayContaining([
-      'Dàn ý chương',
+      'Dàn ý',
       'Lịch sử thay đổi',
     ]));
 
@@ -214,6 +214,86 @@ describe('phase10 StoryEditor reader controls', () => {
     expect(historyButton).toBeTruthy();
     expect(css).not.toMatch(/\.chapter-history-toggle span\s*\{\s*display:\s*none/);
     expect(mobileRule).toContain('min-height: 34px');
+  });
+
+  it('places scoring beside outline and history at the original compact mobile height', async () => {
+    const onOpenManuscriptReview = vi.fn();
+    await renderEditor({
+      isMobileLayout: true,
+      viewMode: 'scene',
+      onOpenManuscriptReview,
+    });
+
+    const toggleRow = container.querySelector('.chapter-outline-toggle-row');
+    const reviewButton = toggleRow?.querySelector('.chapter-review-toggle');
+    const css = readFileSync('src/components/editor/StoryEditor.css', 'utf8');
+    const mobileRule = css.match(/\.story-editor--mobile \.chapter-review-toggle\s*\{[^}]+\}/)?.[0] || '';
+
+    expect(reviewButton?.textContent.trim()).toBe('Chấm điểm');
+    expect(mobileRule).toContain('min-height: 34px');
+    await act(async () => reviewButton.click());
+    expect(onOpenManuscriptReview).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves the original Git toolbar spacing and typography while adding scoring', async () => {
+    const onOpenManuscriptReview = vi.fn();
+    await renderEditor({
+      isMobileLayout: false,
+      viewMode: 'scene',
+      onOpenManuscriptReview,
+    });
+
+    const labels = Array.from(container.querySelectorAll('.chapter-outline-toggle-row > button'))
+      .map((button) => button.textContent.trim());
+    const css = readFileSync('src/components/editor/StoryEditor.css', 'utf8');
+    const toolbarRule = css.match(/\.chapter-outline-toggle-row\s*\{[^}]+\}/)?.[0] || '';
+    const outlineRule = css.match(/\.chapter-outline-toggle-row\s*>?\s*\.chapter-outline-toggle\s*\{[^}]+\}/)?.[0] || '';
+    const originalOutlineRule = css.match(/\.chapter-outline-toggle\s*\{[^}]+\}/)?.[0] || '';
+    const historyRule = css.match(/\.chapter-history-toggle\s*\{[^}]+\}/)?.[0] || '';
+    const reviewRule = css.match(/\.chapter-review-toggle\s*\{[^}]+\}/)?.[0] || '';
+    const mobileToolbarRule = css.match(/\.story-editor--mobile \.chapter-outline-toggle-row\s*\{[^}]+\}/)?.[0] || '';
+
+    expect(labels).toEqual(['Dàn ý', 'Lịch sử thay đổi', 'Chấm điểm']);
+    expect(toolbarRule).toContain('display: flex');
+    expect(toolbarRule).toContain('justify-content: space-between');
+    expect(toolbarRule).toContain('padding-right: var(--space-4)');
+    expect(outlineRule).toContain('flex: 1;');
+    expect(outlineRule).not.toContain('padding-inline');
+    expect(originalOutlineRule).toContain('padding: var(--space-2) var(--space-8)');
+    expect(originalOutlineRule).toContain('font-size: var(--text-sm)');
+    expect(historyRule).toContain('min-height: 30px');
+    expect(historyRule).toContain('padding: 5px 10px');
+    expect(historyRule).toContain('font-size: var(--text-xs)');
+    expect(reviewRule).toContain('min-height: 30px');
+    expect(reviewRule).toContain('padding: 5px 10px');
+    expect(reviewRule).toContain('font-size: var(--text-xs)');
+    expect(mobileToolbarRule).toContain('padding-right: 8px');
+  });
+
+  it('shows an unmistakable live scoring state without enlarging the toolbar', async () => {
+    await renderEditor({
+      isMobileLayout: false,
+      viewMode: 'scene',
+      onOpenManuscriptReview: vi.fn(),
+      manuscriptReviewRunning: true,
+    });
+
+    const reviewButton = container.querySelector('.chapter-review-toggle');
+    expect(reviewButton?.textContent.trim()).toBe('Đang chấm');
+    expect(reviewButton?.getAttribute('aria-busy')).toBe('true');
+    expect(reviewButton?.querySelector('.spin')).not.toBeNull();
+    expect(reviewButton?.classList).toContain('chapter-review-toggle--running');
+  });
+
+  it('opens manuscript scoring in a large desktop dialog that becomes full-screen on phones', () => {
+    const source = readFileSync('src/pages/SceneEditor/SceneEditor.jsx', 'utf8');
+    const css = readFileSync('src/pages/SceneEditor/SceneEditor.css', 'utf8');
+    const desktopRule = css.match(/\.scene-editor-review-dialog\s*\{[^}]+\}/)?.[0] || '';
+
+    expect(source).toContain('scene-editor-review-modal');
+    expect(source).toContain('mobileOpen={reviewOpened}');
+    expect(desktopRule).toMatch(/min\(960px,\s*calc\(100vw - 48px\)\)/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*640px\)[\s\S]*\.scene-editor-review-dialog\s*\{[^}]*width:\s*100vw[^}]*height:\s*100dvh/);
   });
 
   it('renders the desktop segmented control and removes writing-only panels in reader mode', async () => {

@@ -237,10 +237,22 @@ describe('phase10 translator proxy key rotation', () => {
     })).toBe(1);
   });
 
-  it('waits and force-unlocks a proxy key instead of failing while every key is cooling down', async () => {
+  it('waits the full proxy cooldown instead of force-unlocking a key after ten seconds', async () => {
     const context = loadProxyRuntimeContext(async () => {
       throw new Error('fetch is not used by key selection');
     });
+    let now = 1_000_000;
+    let waitedMs = 0;
+    class FakeDate extends Date {
+      static now() {
+        return now;
+      }
+    }
+    context.Date = FakeDate;
+    context.sleep = async (ms) => {
+      waitedMs += ms;
+      now += ms;
+    };
 
     vm.runInContext(`
       proxyApiKeys = ['KEY_A', 'KEY_B'];
@@ -251,6 +263,7 @@ describe('phase10 translator proxy key rotation', () => {
     `, context);
 
     await expect(context.getProxyKeyForChunk(0)).resolves.toBe('KEY_A');
+    expect(waitedMs).toBe(60_000);
   });
 
   it('routes AG Proxy remote HTTPS chat requests through the same OpenAI relay transport as Custom Proxy', async () => {
@@ -651,6 +664,390 @@ describe('phase10 translator proxy key rotation', () => {
       expect(request.body.payloads.every((payload) => payload.stream === false)).toBe(true);
       expect(request.body.payloads.every((payload) => payload.max_tokens === 16384)).toBe(true);
     });
+  });
+
+  it('starts ten same-key relay chunks through two concurrent Cloudflare-safe relay requests', async () => {
+    const requests = [];
+    let releaseRelayResponses;
+    const relayResponseGate = new Promise((resolve) => {
+      releaseRelayResponses = resolve;
+    });
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      const body = JSON.parse(options.body);
+      requests.push({ url: String(url), options, body });
+      await relayResponseGate;
+
+      const lines = body.payloads.map((_, index) => JSON.stringify({
+        index,
+        ok: true,
+        status: 200,
+        body: {
+          choices: [{
+            message: {
+              content: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(90),
+            },
+          }],
+        },
+      })).join('\n') + '\n';
+      return new Response(lines, {
+        status: 200,
+        headers: { 'content-type': 'application/x-ndjson' },
+      });
+    });
+
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = 'custom_proxy';
+      customProxyProfile = {
+        baseUrl: 'https://catie.example.test/v1',
+        defaultModel: 'gcli-gemini-3-flash-preview',
+        models: ['gcli-gemini-3-flash-preview'],
+        chatCompletionsPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        transport: 'auto'
+      };
+      customProxyApiKeys = ['CUSTOM_KEY'];
+      customProxyApiKey = 'CUSTOM_KEY';
+    `, context);
+
+    const translations = Promise.all(Array.from({ length: 10 }, () => context.translateChunkViaProxy(
+      'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+      0.7,
+      'CUSTOM_KEY'
+    )));
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const requestsStartedBeforeAnyResponse = [...requests];
+    releaseRelayResponses();
+    await translations;
+
+    expect(requestsStartedBeforeAnyResponse).toHaveLength(2);
+    expect(requestsStartedBeforeAnyResponse
+      .map((request) => request.body.payloads.length)
+      .sort((left, right) => left - right)).toEqual([5, 5]);
+    requestsStartedBeforeAnyResponse.forEach((request) => {
+      expect(request.url).toBe('/api/translator-openai-proxy');
+      expect(request.body.action).toBe('chat_stream_batch');
+      expect(request.options.headers['X-StoryForge-Upstream-Key']).toBe('CUSTOM_KEY');
+    });
+  });
+
+  it('maps reversed NDJSON relay results back to the original chunk order', async () => {
+    const expected = Array.from(
+      { length: 5 },
+      (_, index) => `Bản dịch tiếng Việt số ${index + 1}, đủ dài và có dấu. `.repeat(90).trim()
+    );
+    const context = loadProxyRuntimeContext(async (_url, options = {}) => {
+      const body = JSON.parse(options.body);
+      const lines = body.payloads.map((_, index) => JSON.stringify({
+        index,
+        ok: true,
+        status: 200,
+        body: { choices: [{ message: { content: expected[index] } }] },
+      })).reverse().join('\n') + '\n';
+      return new Response(lines, {
+        status: 200,
+        headers: { 'content-type': 'application/x-ndjson' },
+      });
+    });
+
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = 'custom_proxy';
+      customProxyProfile = {
+        baseUrl: 'https://catie.example.test/v1',
+        defaultModel: 'custom-model',
+        models: ['custom-model'],
+        chatCompletionsPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        transport: 'auto'
+      };
+      customProxyApiKeys = ['CUSTOM_KEY'];
+      customProxyApiKey = 'CUSTOM_KEY';
+    `, context);
+
+    const results = await Promise.all(Array.from({ length: 5 }, (_, index) => (
+      context.translateChunkViaProxy(`source-${index}`, 0.7, 'CUSTOM_KEY')
+    )));
+
+    expect(results).toEqual(expected);
+  });
+
+  it('balances the minimum number of relay shards for every wave size from one to thirty', () => {
+    const context = loadProxyRuntimeContext(async () => {
+      throw new Error('fetch is not used by relay shard planning');
+    });
+
+    for (let requestCount = 1; requestCount <= 30; requestCount += 1) {
+      const sizes = [...context.getBalancedProxyRelayShardSizes(requestCount)];
+      expect(sizes.reduce((sum, size) => sum + size, 0)).toBe(requestCount);
+      expect(Math.max(...sizes)).toBeLessThanOrEqual(6);
+      expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1);
+      expect(sizes).toHaveLength(Math.ceil(requestCount / 6));
+    }
+
+    expect([...context.getBalancedProxyRelayShardSizes(10)]).toEqual([5, 5]);
+    expect([...context.getBalancedProxyRelayShardSizes(13)]).toEqual([5, 4, 4]);
+    expect([...context.getBalancedProxyRelayShardSizes(15)]).toEqual([5, 5, 5]);
+    expect([...context.getBalancedProxyRelayShardSizes(20)]).toEqual([5, 5, 5, 5]);
+    expect([...context.getBalancedProxyRelayShardSizes(30)]).toEqual([6, 6, 6, 6, 6]);
+  });
+
+  it('keeps relay shards separated and balanced for two-key and six-key waves', async () => {
+    const runPattern = async (counts) => {
+      const requests = [];
+      const context = loadProxyRuntimeContext(async (_url, options = {}) => {
+        const body = JSON.parse(options.body);
+        requests.push({ body, key: options.headers['X-StoryForge-Upstream-Key'] });
+        const lines = body.payloads.map((_, index) => JSON.stringify({
+          index,
+          ok: true,
+          status: 200,
+          body: {
+            choices: [{ message: { content: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(90) } }],
+          },
+        })).reverse().join('\n') + '\n';
+        return new Response(lines, {
+          status: 200,
+          headers: { 'content-type': 'application/x-ndjson' },
+        });
+      });
+      const keys = counts.map((_, index) => `KEY_${index}`);
+      context.patternKeys = keys;
+      vm.runInContext(`
+        useProxy = true;
+        activeTranslatorProvider = 'custom_proxy';
+        customProxyProfile = {
+          baseUrl: 'https://catie.example.test/v1',
+          defaultModel: 'custom-model',
+          models: ['custom-model'],
+          chatCompletionsPath: '/v1/chat/completions',
+          modelsPath: '/v1/models',
+          transport: 'auto'
+        };
+        customProxyApiKeys = patternKeys;
+        customProxyApiKey = patternKeys[0];
+      `, context);
+
+      await Promise.all(counts.flatMap((count, keyIndex) => (
+        Array.from({ length: count }, () => context.translateChunkViaProxy(
+          'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+          0.7,
+          keys[keyIndex]
+        ))
+      )));
+      return requests;
+    };
+
+    const twoKeyRequests = await runPattern([10, 10]);
+    expect(twoKeyRequests).toHaveLength(4);
+    expect(twoKeyRequests.map(({ body }) => body.payloads.length)).toEqual([5, 5, 5, 5]);
+    expect(twoKeyRequests.filter(({ key }) => key === 'KEY_0')).toHaveLength(2);
+    expect(twoKeyRequests.filter(({ key }) => key === 'KEY_1')).toHaveLength(2);
+
+    const sixKeyRequests = await runPattern([5, 5, 5, 5, 5, 5]);
+    expect(sixKeyRequests).toHaveLength(6);
+    expect(sixKeyRequests.every(({ body }) => body.payloads.length === 5)).toBe(true);
+    expect(new Set(sixKeyRequests.map(({ key }) => key)).size).toBe(6);
+  });
+
+  it('reads Retry-After from a single relay response and a streamed batch item', async () => {
+    const relayCalls = [];
+    const context = loadProxyRuntimeContext(async (_url, options = {}) => {
+      const body = JSON.parse(options.body);
+      relayCalls.push(body);
+      if (body.action === 'chat') {
+        const firstSingle = relayCalls.filter((call) => call.action === 'chat').length === 1;
+        return new Response(JSON.stringify({
+          error: 'rate limited',
+          ...(firstSingle ? {} : { retryAfterSeconds: 17 }),
+        }), {
+          status: 429,
+          headers: {
+            'content-type': 'application/json',
+            ...(firstSingle ? { 'retry-after': '23' } : {}),
+          },
+        });
+      }
+      const lines = body.payloads.map((_, index) => JSON.stringify({
+        index,
+        ok: false,
+        status: 429,
+        retryAfterSeconds: 31,
+        body: { error: 'rate limited' },
+      })).join('\n') + '\n';
+      return new Response(lines, {
+        status: 200,
+        headers: { 'content-type': 'application/x-ndjson' },
+      });
+    });
+
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = 'custom_proxy';
+      customProxyProfile = {
+        baseUrl: 'https://catie.example.test/v1',
+        defaultModel: 'custom-model',
+        models: ['custom-model'],
+        chatCompletionsPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        transport: 'auto'
+      };
+      customProxyApiKeys = ['CUSTOM_KEY'];
+      customProxyApiKey = 'CUSTOM_KEY';
+    `, context);
+
+    await expect(context.translateChunkViaProxy('single', 0.7, 'CUSTOM_KEY')).rejects.toMatchObject({
+      code: 'PROXY_RATE_LIMIT',
+      retryAfterSeconds: 23,
+    });
+    await expect(context.translateChunkViaProxy('body', 0.7, 'CUSTOM_KEY')).rejects.toMatchObject({
+      code: 'PROXY_RATE_LIMIT',
+      retryAfterSeconds: 17,
+    });
+
+    const batchResults = await Promise.allSettled([
+      context.translateChunkViaProxy('batch-a', 0.7, 'CUSTOM_KEY'),
+      context.translateChunkViaProxy('batch-b', 0.7, 'CUSTOM_KEY'),
+    ]);
+    expect(batchResults).toHaveLength(2);
+    batchResults.forEach((result) => {
+      expect(result.status).toBe('rejected');
+      expect(result.reason).toMatchObject({
+        code: 'PROXY_RATE_LIMIT',
+        retryAfterSeconds: 31,
+      });
+    });
+    expect(relayCalls.map((call) => call.action)).toEqual(['chat', 'chat', 'chat_stream_batch']);
+  });
+
+  it('rotates immediately after a proxy 429 and applies five-second exponential cooldown without a fixed sleep', async () => {
+    const context = loadProxyRuntimeContext(async () => ({
+      ok: false,
+      status: 429,
+      json: async () => ({ error: 'rate limited' }),
+    }));
+    vm.runInContext(`
+      useProxy = true;
+      useOllama = false;
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+      customProxyProfile = {
+        baseUrl: 'http://localhost:1234/v1',
+        defaultModel: 'custom-model',
+        models: ['custom-model'],
+        chatCompletionsPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        transport: 'direct'
+      };
+      customProxyApiKeys = ['KEY_A', 'KEY_B'];
+      customProxyApiKey = 'KEY_A';
+      rpmPerKey = 10;
+      cancelRequested = false;
+      translatorRpmTimestamps = {};
+      sleepDurations = [];
+      sleep = async (ms) => { sleepDurations.push(ms); };
+      Math.random = () => 0;
+    `, context);
+    const startedAt = vm.runInContext('Date.now()', context);
+
+    await expect(context.translateChunkWithRetry('source', 0, 2)).rejects.toMatchObject({
+      code: 'PROXY_RATE_LIMIT',
+    });
+
+    expect(vm.runInContext('sleepDurations', context)).toEqual([]);
+    const cooldowns = vm.runInContext(`[
+      customProxyKeyHealthMap[0].disabledUntil - ${startedAt},
+      customProxyKeyHealthMap[1].disabledUntil - ${startedAt}
+    ]`, context);
+    expect(cooldowns[0]).toBeGreaterThanOrEqual(5_000);
+    expect(cooldowns[0]).toBeLessThan(6_000);
+    expect(cooldowns[1]).toBeGreaterThanOrEqual(5_000);
+    expect(cooldowns[1]).toBeLessThan(6_000);
+  });
+
+  it('increases repeated proxy 429 backoff from five to ten to twenty seconds and caps it at sixty', () => {
+    const context = loadProxyRuntimeContext(async () => {
+      throw new Error('fetch is not used by backoff calculation');
+    });
+    vm.runInContext(`
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+      customProxyApiKeys = ['KEY_A'];
+      customProxyApiKey = 'KEY_A';
+      customProxyKeyHealthMap = {};
+      Math.random = () => 0;
+    `, context);
+
+    const backoffs = [];
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      backoffs.push(vm.runInContext("getProxyRateLimitBackoffMs('KEY_A')", context));
+      vm.runInContext("recordProxyKeyError('KEY_A', 'RATE_LIMIT_429', 1000)", context);
+    }
+
+    expect(backoffs).toEqual([5_000, 10_000, 20_000, 40_000, 60_000, 60_000]);
+  });
+
+  it('fails clearly instead of bypassing RPM when the proxy scheduler is unavailable', async () => {
+    let transportCalls = 0;
+    const context = loadProxyRuntimeContext(async () => {
+      transportCalls += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: 'translated' } }] }),
+      };
+    });
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.AG_PROXY;
+      proxyApiKeys = ['KEY_A'];
+      proxyApiKey = 'KEY_A';
+      proxyModel = 'proxy-model';
+      sendProxyTranslationAttempt = undefined;
+    `, context);
+
+    await expect(context.translateChunkWithRetry('source', 0, 1)).rejects.toMatchObject({
+      code: 'PROXY_SCHEDULER_UNAVAILABLE',
+      retryable: false,
+      userMessage: expect.stringContaining('bộ điều phối proxy'),
+    });
+    expect(transportCalls).toBe(0);
+  });
+
+  it('releases the RPM reservation when direct proxy fetch fails before dispatch', async () => {
+    const context = loadProxyRuntimeContext(() => {
+      throw new TypeError('invalid request URL');
+    });
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+      customProxyProfile = {
+        baseUrl: 'https://proxy.example.test/v1',
+        defaultModel: 'custom-model',
+        models: ['custom-model'],
+        chatCompletionsPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        transport: 'direct'
+      };
+      customProxyApiKeys = ['CUSTOM_KEY'];
+      customProxyApiKey = 'CUSTOM_KEY';
+      rpmPerKey = 1;
+      translatorRpmTimestamps = {};
+      translatorRpmReservations = {};
+    `, context);
+
+    await expect(context.sendProxyTranslationAttempt({
+      chunkIndex: 0,
+      text: 'source',
+      kind: 'retry',
+    })).rejects.toMatchObject({ rawMessage: 'invalid request URL' });
+    expect(vm.runInContext(
+      'getTranslatorRpmRecentCount(TRANSLATOR_PROVIDERS.CUSTOM_PROXY, 0)',
+      context
+    )).toBe(0);
+    expect(vm.runInContext(
+      'getTranslatorRpmReservationCount(TRANSLATOR_PROVIDERS.CUSTOM_PROXY, 0)',
+      context
+    )).toBe(0);
   });
 
   it('fetches Custom Proxy models from the openai_proxy key pool without changing AG config', async () => {

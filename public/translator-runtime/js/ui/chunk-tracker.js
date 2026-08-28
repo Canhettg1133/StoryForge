@@ -358,6 +358,7 @@ async function persistTranslatedChunkUpdate(chunkIndex, outputText, options = {}
             status,
             outputText: text,
             error,
+            ...(typeof getTranslatorChunkKeyUsagePatch === 'function' ? getTranslatorChunkKeyUsagePatch(safeIndex) : {}),
         });
     }
 
@@ -421,6 +422,7 @@ function refreshTranslatedChunkDerivedState(options = {}) {
 // INITIALIZE TRACKER
 // ============================================
 function initChunkTracker(chunks, preparedChunks, customPrompt, options = {}) {
+    if (typeof resetTranslatorChunkKeyUsage === 'function') resetTranslatorChunkKeyUsage(options.keyUsageRows || []);
     chunkTrackerDynamicMode = Boolean(options.dynamic);
     chunkTrackerLargeFileMode = Boolean(options.largeFile);
     chunkTrackerWindowStart = 0;
@@ -436,7 +438,6 @@ function initChunkTracker(chunks, preparedChunks, customPrompt, options = {}) {
         status: CHUNK_STATUS.PENDING,
         retryCount: 0,
         model: '',
-        keyLabel: '',
         timeMs: 0,
         error: '',
         startTime: 0
@@ -466,7 +467,6 @@ function trackChunkDiscovered(chunkIndex, chunkText, sourceMeta = {}) {
             status: CHUNK_STATUS.PENDING,
             retryCount: 0,
             model: '',
-            keyLabel: '',
             timeMs: 0,
             error: '',
             startTime: 0,
@@ -533,14 +533,6 @@ function trackChunkStart(chunkIndex) {
     if (!chunkTrackingData[chunkIndex]) return;
     applyChunkStatus(chunkTrackingData[chunkIndex], CHUNK_STATUS.TRANSLATING);
     chunkTrackingData[chunkIndex].startTime = Date.now();
-    renderChunkRow(chunkIndex);
-}
-
-function trackChunkProxyKey(chunkIndex, keyIndex) {
-    if (!chunkTrackingData[chunkIndex]) return;
-    const normalizedKeyIndex = Number.isFinite(Number(keyIndex)) ? Number(keyIndex) : -1;
-    if (normalizedKeyIndex < 0) return;
-    chunkTrackingData[chunkIndex].keyLabel = String.fromCharCode(65 + normalizedKeyIndex);
     renderChunkRow(chunkIndex);
 }
 
@@ -660,17 +652,14 @@ function restoreChunkRetryTrackerState(data, snapshot, options = {}) {
 
 async function sendManualRetryAttempt(chunkIndex, chunkText) {
     if (typeof useProxy !== 'undefined' && useProxy) {
-        if (typeof sendProxyTranslationAttempt === 'function') {
-            const proxyAttempt = await sendProxyTranslationAttempt({
-                chunkIndex,
-                text: chunkText,
-                temperature: 0.7,
-                kind: 'manual_retry',
-            });
-            return proxyAttempt.result;
-        }
-        const proxyKey = typeof getProxyKeyForChunk === 'function' ? await getProxyKeyForChunk(chunkIndex) : proxyApiKey;
-        return translateChunkViaProxy(chunkText, 0.7, proxyKey);
+        if (typeof sendProxyTranslationAttempt !== 'function') throwProxySchedulerUnavailable();
+        const proxyAttempt = await sendProxyTranslationAttempt({
+            chunkIndex,
+            text: chunkText,
+            temperature: 0.7,
+            kind: 'manual_retry',
+        });
+        return proxyAttempt.result;
     }
 
     if (typeof useOllama !== 'undefined' && useOllama) {
@@ -680,7 +669,7 @@ async function sendManualRetryAttempt(chunkIndex, chunkText) {
         if (typeof recordTranslatorRpmRequest === 'function' && typeof TRANSLATOR_PROVIDERS !== 'undefined') {
             recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.OLLAMA, 0);
         }
-        return translateWithOllama(chunkText, 0.7);
+        return translateWithOllama(chunkText, 0.7, { chunkKeyUsage: { chunkIndex, kind: 'manual_retry' } });
     }
 
     const directAttempt = await sendDirectTranslationAttempt({
@@ -847,15 +836,22 @@ function pickRetryIssues(summary, source) {
 }
 
 async function readIssueRetrySource(issue, source) {
-    if (source !== 'large-file') return getManualRetrySourceText(issue.chunkIndex);
-
     const sessionId = typeof currentTranslatorSessionId !== 'undefined' ? currentTranslatorSessionId : null;
+    if (source !== 'large-file') {
+        if (sessionId && typeof getTranslatorChunk === 'function' && typeof hydrateTranslatorChunkKeyUsage === 'function'
+            && !getTranslatorChunkKeyUsage(issue.chunkIndex)) {
+            hydrateTranslatorChunkKeyUsage(await getTranslatorChunk(sessionId, issue.chunkIndex));
+        }
+        return getManualRetrySourceText(issue.chunkIndex);
+    }
+
     const canReadPersistedRow = Boolean(
         sessionId
         && (typeof currentTranslatorPersistenceAvailable === 'undefined' || currentTranslatorPersistenceAvailable)
         && typeof getTranslatorChunk === 'function'
     );
     const row = canReadPersistedRow ? await getTranslatorChunk(sessionId, issue.chunkIndex) : null;
+    if (typeof hydrateTranslatorChunkKeyUsage === 'function') hydrateTranslatorChunkKeyUsage(row);
     let sourceText = row?.sourceText || '';
     const trackedRow = typeof chunkTrackingData !== 'undefined' ? chunkTrackingData[issue.chunkIndex] : null;
     const byteStart = Number(row?.byteStart ?? trackedRow?.byteStart);
@@ -1127,6 +1123,7 @@ function viewChunkDetail(chunkIndex) {
             ${data.model ? `<span>🤖 ${safeModel}</span>` : ''}
         </div>
         ${data.error ? `<div class="chunk-detail-error">❌ ${safeError}</div>` : ''}
+        ${typeof renderTranslatorChunkKeyDetail === 'function' ? renderTranslatorChunkKeyDetail(chunkIndex) : ''}
         <div class="chunk-detail-texts">
             <div class="chunk-detail-col">
                 <h4>📥 Nội dung gốc</h4>
@@ -1316,7 +1313,7 @@ function buildChunkRowHtml(data) {
     const retryBusy = isChunkIssueActionBusy();
     const retryLabel = data.retryCount > 0 ? ` (×${data.retryCount})` : '';
 
-    const keyBadge = data.keyLabel ? `<span class="ct-key">🔑${data.keyLabel}</span>` : '';
+    const keyBadge = typeof renderTranslatorChunkKeyBadge === 'function' ? renderTranslatorChunkKeyBadge(i) : '';
 
     return `
         <div class="ct-row ct-${data.status}" id="chunk-row-${i}" data-click-action="viewChunkDetail" data-chunk-index="${i}">

@@ -341,7 +341,9 @@ async function createLocalSessionForFile(file, options = {}) {
 }
 
 function setCurrentTranslatorSession(session) {
+    const previousSessionId = currentTranslatorSessionId;
     currentTranslatorSessionId = session?.id || null;
+    if (previousSessionId !== currentTranslatorSessionId && typeof resetTranslatorChunkKeyUsage === 'function') resetTranslatorChunkKeyUsage();
     currentTranslatorSessionMeta = session || null;
     currentTranslatorPersistenceAvailable = true;
     translationStartChunkIndex = Number(session?.resumeChunkIndex ?? session?.startChunkIndex ?? 0);

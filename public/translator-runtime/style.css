@@ -1166,6 +1166,10 @@ select option {
         align-items: stretch;
     }
 
+    .translation-queue-item__main {
+        flex: none;
+    }
+
     .optional-tool-summary {
         align-items: flex-start;
         flex-wrap: wrap;
@@ -1744,6 +1748,10 @@ select option {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     background: var(--bg-card);
+}
+
+body.translator-is-translating .translate-actions {
+    margin-bottom: var(--spacing-lg);
 }
 
 .translate-action-copy {
@@ -3812,6 +3820,11 @@ select option {
     .history-item {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .history-item .history-info {
+        flex: none;
+        width: 100%;
     }
 
     .history-item .history-btns {

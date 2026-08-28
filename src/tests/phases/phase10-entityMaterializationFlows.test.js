@@ -271,6 +271,7 @@ async function loadViewerModule(seed) {
 describe('phase10 entity materialization flows', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   it('blocks a second chapter completion run while the first is still active', async () => {
@@ -1139,6 +1140,120 @@ describe('phase10 entity materialization flows', () => {
     );
     expect(result.canonResult).toMatchObject({ ok: true, revisionId: 91 });
     expect((await db.chapters.get(11)).status).toBe('done');
+  });
+
+  it('uses one completion model snapshot for summary, Codex extraction, and canonization', async () => {
+    localStorage.setItem('sf-preferred-provider', 'gemini_direct');
+    localStorage.setItem('sf-quality-mode', 'best');
+    localStorage.setItem('sf-chapter-completion-model-preferences', JSON.stringify({
+      version: 1,
+      scopes: {
+        gemini_direct: { model: 'gemini-2.5-flash', prompted: true },
+      },
+    }));
+
+    let resolveSummary;
+    let resolveExtract;
+    const summaryPromise = new Promise((resolve) => {
+      resolveSummary = resolve;
+    });
+    const extractPromise = new Promise((resolve) => {
+      resolveExtract = resolve;
+    });
+    const { store, mocks } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac xuat hien.', final_text: '', order_index: 0 }],
+      characters: [],
+      locations: [],
+      objects: [],
+      worldTerms: [],
+    }, {
+      summarizeChapterImpl: () => summaryPromise,
+      extractFromChapterImpl: () => extractPromise,
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac xuat hien.', final_text: '', order_index: 0 }],
+    });
+
+    const completionPromise = store.getState().runChapterCompletion(11, { mode: 'manual' });
+    await vi.waitFor(() => {
+      expect(mocks.summarizeChapter).toHaveBeenCalledTimes(1);
+      expect(mocks.extractFromChapter).toHaveBeenCalledTimes(1);
+    });
+
+    const expectedRoute = {
+      providerOverride: 'gemini_direct',
+      modelOverride: 'gemini-2.5-flash',
+    };
+    expect(mocks.summarizeChapter.mock.calls[0][0].routeOptions).toEqual(expectedRoute);
+    expect(mocks.extractFromChapter.mock.calls[0][0].routeOptions).toEqual(expectedRoute);
+
+    const { saveChapterCompletionModelPreference } = await import('../../services/ai/chapterCompletionModelRouting.js');
+    saveChapterCompletionModelPreference({
+      provider: 'gemini_direct',
+      model: 'gemini-3-flash-preview',
+    });
+    resolveSummary('Tom tat');
+    resolveExtract({ characters: [] });
+
+    const result = await completionPromise;
+    expect(result.ok).toBe(true);
+    expect(mocks.canonicalizeChapter).toHaveBeenCalledWith(
+      1,
+      11,
+      expect.objectContaining({ routeOptions: expectedRoute }),
+    );
+  });
+
+  it('uses the completion model preference for automatic completion', async () => {
+    localStorage.setItem('sf-preferred-provider', 'gemini_direct');
+    localStorage.setItem('sf-quality-mode', 'best');
+    localStorage.setItem('sf-chapter-completion-model-preferences', JSON.stringify({
+      version: 1,
+      scopes: {
+        gemini_direct: { model: 'gemini-2.5-flash', prompted: true },
+      },
+    }));
+
+    const { store, mocks } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac xuat hien.', final_text: '', order_index: 0 }],
+      characters: [],
+      locations: [],
+      objects: [],
+      worldTerms: [],
+    }, {
+      extracted: { characters: [] },
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac xuat hien.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().autoCompleteChapter(11);
+    const expectedRoute = {
+      providerOverride: 'gemini_direct',
+      modelOverride: 'gemini-2.5-flash',
+    };
+
+    expect(result.ok).toBe(true);
+    expect(mocks.summarizeChapter.mock.calls[0][0].routeOptions).toEqual(expectedRoute);
+    expect(mocks.extractFromChapter.mock.calls[0][0].routeOptions).toEqual(expectedRoute);
+    expect(mocks.canonicalizeChapter).toHaveBeenCalledWith(
+      1,
+      11,
+      expect.objectContaining({ routeOptions: expectedRoute }),
+    );
+    expect(store.getState().chapterCompletionById[11].mode).toBe('auto');
   });
 
   it('keeps the chapter draft when the canon engine returns no explicit success result', async () => {

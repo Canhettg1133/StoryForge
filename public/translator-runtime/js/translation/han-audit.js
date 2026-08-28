@@ -437,6 +437,7 @@ async function getHanAuditChunkContent(chunkIndex) {
     if (sessionId && typeof getTranslatorChunk === 'function') {
         const row = await getTranslatorChunk(sessionId, safeIndex);
         if (row) {
+            if (typeof hydrateTranslatorChunkKeyUsage === 'function') hydrateTranslatorChunkKeyUsage(row);
             const sourceText = typeof readTranslatorChunkSource === 'function'
                 ? await readTranslatorChunkSource(sessionId, row)
                 : String(row.sourceText || '');
@@ -472,6 +473,7 @@ async function persistHanCorrection(chunkIndex, outputText) {
             status: 'done',
             outputText,
             error: '',
+            ...(typeof getTranslatorChunkKeyUsagePatch === 'function' ? getTranslatorChunkKeyUsagePatch(chunkIndex) : {}),
         });
     }
     if (typeof translatedChunks !== 'undefined' && Array.isArray(translatedChunks)) {

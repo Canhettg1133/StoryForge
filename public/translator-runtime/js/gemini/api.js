@@ -6,7 +6,9 @@
 // ============================================
 // PROXY API - OpenAI Compatible (BeiJiXingXing, OpenRouter...)
 // ============================================
-const PROXY_RELAY_CHAT_BATCH_MAX_SIZE = 30;
+// Một wave lớn sẽ tách thành nhiều relay invocation chạy đồng thời; mỗi invocation
+// phải giữ tối đa 6 upstream fetch đang chờ header theo giới hạn Cloudflare Workers.
+const PROXY_RELAY_CHAT_BATCH_MAX_SIZE = 6;
 const DEFAULT_PROXY_TRANSLATION_MAX_TOKENS = 16384;
 const CUSTOM_PROXY_TRANSLATION_MAX_TOKENS = 32768;
 let proxyRelayChatBatchQueue = [];
@@ -29,6 +31,21 @@ function createProxyAbortError() {
     const error = new Error('Request aborted');
     error.name = 'AbortError';
     return error;
+}
+
+function throwProxySchedulerUnavailable() {
+    const message = 'Proxy scheduler chưa sẵn sàng; request đã bị chặn để bảo vệ giới hạn RPM.';
+    if (typeof createTranslatorError === 'function') {
+        throw createTranslatorError('PROXY_SCHEDULER_UNAVAILABLE', {
+            provider: 'Proxy',
+            rawMessage: message,
+            retryable: false,
+        });
+    }
+    const error = new Error(message);
+    error.code = 'PROXY_SCHEDULER_UNAVAILABLE';
+    error.retryable = false;
+    throw error;
 }
 
 function getStoryForgeRelayAuthHeaders(upstreamKey) {
@@ -80,9 +97,13 @@ function getProxyRelayBatchKey(activeBaseUrl, activeKey, proxyTarget) {
 function createProxyRelayBatchItemResponse(entry = {}) {
     const status = Number(entry.status) || 502;
     const body = entry.body ?? {};
+    const retryAfterSeconds = Number(entry.retryAfterSeconds);
     return {
         ok: Boolean(entry.ok),
         status,
+        retryAfterSeconds: Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
+            ? retryAfterSeconds
+            : undefined,
         json: async () => {
             if (typeof body !== 'string') return body;
             try {
@@ -94,13 +115,35 @@ function createProxyRelayBatchItemResponse(entry = {}) {
     };
 }
 
+function getBalancedProxyRelayShardSizes(itemCount, maxSize = PROXY_RELAY_CHAT_BATCH_MAX_SIZE) {
+    const safeItemCount = Math.max(0, Math.trunc(Number(itemCount) || 0));
+    const safeMaxSize = Math.max(1, Math.trunc(Number(maxSize) || PROXY_RELAY_CHAT_BATCH_MAX_SIZE));
+    if (safeItemCount === 0) return [];
+    const shardCount = Math.ceil(safeItemCount / safeMaxSize);
+    const baseSize = Math.floor(safeItemCount / shardCount);
+    let remainder = safeItemCount % shardCount;
+    return Array.from({ length: shardCount }, () => {
+        const size = baseSize + (remainder > 0 ? 1 : 0);
+        if (remainder > 0) remainder -= 1;
+        return size;
+    });
+}
+
 function cleanupProxyRelayBatchItem(item) {
     if (item?.signal && item.abortHandler) {
         item.signal.removeEventListener('abort', item.abortHandler);
     }
 }
 
-function enqueueProxyRelayChatRequest(activeBaseUrl, activeKey, proxyTarget, payload, signal) {
+function enqueueProxyRelayChatRequest(
+    activeBaseUrl,
+    activeKey,
+    proxyTarget,
+    payload,
+    signal,
+    onProxyDispatch = null,
+    onChunkKeyUsage = null,
+) {
     return new Promise((resolve, reject) => {
         if (signal?.aborted) {
             reject(createProxyAbortError());
@@ -113,6 +156,8 @@ function enqueueProxyRelayChatRequest(activeBaseUrl, activeKey, proxyTarget, pay
             proxyTarget,
             payload,
             signal,
+            onProxyDispatch,
+            onChunkKeyUsage,
             resolve,
             reject,
             aborted: false,
@@ -152,9 +197,11 @@ function flushProxyRelayChatBatchQueue() {
     });
 
     groups.forEach((items) => {
-        for (let index = 0; index < items.length; index += PROXY_RELAY_CHAT_BATCH_MAX_SIZE) {
-            sendProxyRelayChatStreamBatchGroup(items.slice(index, index + PROXY_RELAY_CHAT_BATCH_MAX_SIZE));
-        }
+        let index = 0;
+        getBalancedProxyRelayShardSizes(items.length).forEach((size) => {
+            sendProxyRelayChatStreamBatchGroup(items.slice(index, index + size));
+            index += size;
+        });
     });
 }
 
@@ -190,6 +237,7 @@ async function resolveProxyRelayStreamResponse(response, items) {
         items.forEach((item) => item.resolve({
             ok: false,
             status: response.status,
+            headers: response.headers,
             json: async () => errorData,
         }));
         return;
@@ -253,15 +301,23 @@ async function sendProxyRelayChatStreamBatchGroup(items) {
         };
 
     try {
-        const response = await fetch(first.activeBaseUrl, {
+        const serializedBody = JSON.stringify(requestBody);
+        activeItems.forEach((item) => {
+            if (typeof item.onChunkKeyUsage === 'function') item.onChunkKeyUsage();
+        });
+        const responsePromise = fetch(first.activeBaseUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 ...getStoryForgeRelayAuthHeaders(first.activeKey),
             },
-            body: JSON.stringify(requestBody),
+            body: serializedBody,
             signal: groupController.signal,
         });
+        activeItems.forEach((item) => {
+            if (typeof item.onProxyDispatch === 'function') item.onProxyDispatch();
+        });
+        const response = await responsePromise;
 
         if (activeItems.length === 1) {
             activeItems[0].resolve(response);
@@ -279,7 +335,23 @@ async function sendProxyRelayChatStreamBatchGroup(items) {
     }
 }
 
+function parseProxyRetryAfterSeconds(value, now = Date.now()) {
+    if (value == null || value === '') return undefined;
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return Math.ceil(numeric);
+    const retryAt = Date.parse(String(value));
+    if (!Number.isFinite(retryAt)) return undefined;
+    return Math.max(0, Math.ceil((retryAt - now) / 1000));
+}
+
 async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = null, allowStoryForgeAuthRefresh = true, requestOptions = {}) {
+    const send = options => requestProxyChunkTranslation(text, temperature, apiKeyOverride, allowStoryForgeAuthRefresh, options);
+    return typeof withTranslatorChunkKeyUsage === 'function'
+        ? withTranslatorChunkKeyUsage(requestOptions, send)
+        : send(requestOptions);
+}
+
+async function requestProxyChunkTranslation(text, temperature, apiKeyOverride, allowStoryForgeAuthRefresh, requestOptions) {
     const request = typeof normalizeTranslationRequest === 'function'
         ? normalizeTranslationRequest(text)
         : { systemText: '', userText: String(text || ''), sourceText: String(text || '') };
@@ -333,17 +405,39 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
                 payload,
             }
             : payload;
-        response = proxyTarget?.mode === 'relay'
-            ? await enqueueProxyRelayChatRequest(activeBaseUrl, activeKey, proxyTarget, payload, controller.signal)
-            : await fetch(activeBaseUrl, {
+        const provider = typeof getProxyProviderId === 'function' ? getProxyProviderId() : 'ag_proxy';
+        const keyIndex = typeof getProxyKeyIndex === 'function' ? getProxyKeyIndex(activeKey, provider) : null;
+        const serializedRequestBody = proxyTarget?.mode === 'relay' ? null : JSON.stringify(requestBody);
+        const onProxyDispatch = typeof requestOptions.onProxyDispatch === 'function'
+            ? requestOptions.onProxyDispatch
+            : null;
+        const onChunkKeyUsage = typeof requestOptions.onChunkKeyUsage === 'function'
+            ? () => requestOptions.onChunkKeyUsage({ provider, model: activeModel, key: activeKey, keyIndex })
+            : null;
+        if (proxyTarget?.mode === 'relay') {
+            response = await enqueueProxyRelayChatRequest(
+                activeBaseUrl,
+                activeKey,
+                proxyTarget,
+                payload,
+                controller.signal,
+                onProxyDispatch,
+                onChunkKeyUsage,
+            );
+        } else {
+            if (onChunkKeyUsage) onChunkKeyUsage();
+            const responsePromise = fetch(activeBaseUrl, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${activeKey}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(requestBody),
+                body: serializedRequestBody,
                 signal: controller.signal
             });
+            if (onProxyDispatch) onProxyDispatch();
+            response = await responsePromise;
+        }
     } catch (fetchError) {
         if (fetchError.name === 'AbortError') {
             if (cancelRequested) {
@@ -371,6 +465,13 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const errorMsg = getProxyResponseErrorMessage(errorData, response.status);
+        const retryAfterSeconds = [
+            response.retryAfterSeconds,
+            response.headers?.get?.('Retry-After'),
+            errorData?.retryAfterSeconds,
+            errorData?.error?.retryAfterSeconds,
+        ].map((value) => parseProxyRetryAfterSeconds(value))
+            .find((value) => Number.isFinite(value));
 
         console.error(`[Proxy ERROR] Status: ${response.status} | ${errorMsg}`);
 
@@ -391,7 +492,11 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
             console.warn('[Proxy] 403 - Backend suspended, proxy sẽ xoay key khác khi retry...');
         }
 
-        throw createProxyHttpError(response.status, errorData, { model: activeModel, provider: activeProviderLabel });
+        throw createProxyHttpError(response.status, errorData, {
+            model: activeModel,
+            provider: activeProviderLabel,
+            retryAfterSeconds,
+        });
     }
 
     const data = await response.json();
@@ -487,14 +592,29 @@ function getDirectGeminiSystemInstructionText(text = '') {
 }
 
 async function translateChunk(text, modelKeyPair, temperature = 0.7, requestOptions = {}) {
+    const send = options => requestDirectChunkTranslation(text, modelKeyPair, temperature, options);
+    return typeof withTranslatorChunkKeyUsage === 'function'
+        ? withTranslatorChunkKeyUsage(requestOptions, send)
+        : send(requestOptions);
+}
+
+async function requestDirectChunkTranslation(text, modelKeyPair, temperature, requestOptions) {
     const request = typeof normalizeTranslationRequest === 'function'
         ? normalizeTranslationRequest(text)
         : { systemText: getDirectGeminiSystemInstructionText(text), userText: String(text || ''), sourceText: String(text || '') };
     // ===== AUTO-ROUTE: Nếu bật proxy, gọi proxy thay vì Gemini Direct =====
     if (useProxy) {
-        // Safety net: should not normally reach here (retry.js handles proxy routing)
-        const proxyKey = typeof getProxyKeyForChunk === 'function' ? await getProxyKeyForChunk(0) : proxyApiKey;
-        return await translateChunkViaProxy(request, temperature, proxyKey, true, requestOptions);
+        if (typeof sendProxyTranslationAttempt !== 'function') throwProxySchedulerUnavailable();
+        const usage = requestOptions?.chunkKeyUsage || {};
+        const attempt = await sendProxyTranslationAttempt({
+            chunkIndex: usage.chunkIndex || 0,
+            text: request,
+            temperature,
+            kind: usage.kind || 'main',
+            partIndex: usage.partIndex,
+            requestOptions,
+        });
+        return attempt.result;
     }
 
     const { model: modelName, key: apiKey, keyIndex } = modelKeyPair;
@@ -536,6 +656,9 @@ async function translateChunk(text, modelKeyPair, temperature = 0.7, requestOpti
 
     let response;
     try {
+        if (typeof requestOptions.onChunkKeyUsage === 'function') {
+            requestOptions.onChunkKeyUsage({ provider: 'gemini_direct', model: modelName, key: apiKey, keyIndex });
+        }
         response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
