@@ -603,7 +603,7 @@ async function requestDirectChunkTranslation(text, modelKeyPair, temperature, re
         ? normalizeTranslationRequest(text)
         : { systemText: getDirectGeminiSystemInstructionText(text), userText: String(text || ''), sourceText: String(text || '') };
     // ===== AUTO-ROUTE: Nếu bật proxy, gọi proxy thay vì Gemini Direct =====
-    if (useProxy) {
+    if (useProxy && !requestOptions?.directOnly) {
         if (typeof sendProxyTranslationAttempt !== 'function') throwProxySchedulerUnavailable();
         const usage = requestOptions?.chunkKeyUsage || {};
         const attempt = await sendProxyTranslationAttempt({
@@ -648,22 +648,25 @@ async function requestDirectChunkTranslation(text, modelKeyPair, temperature, re
     };
 
     // TIMEOUT: 120 giây (gemini-2.5-flash thinking cần 60-90s cho text dài)
-    const controller = new AbortController();
-    if (typeof registerActiveRequestController === 'function') {
+    const controller = requestOptions.directSignal ? null : new AbortController();
+    if (controller && typeof registerActiveRequestController === 'function') {
         registerActiveRequestController(controller);
     }
-    const timeoutId = setTimeout(() => controller.abort('request-timeout'), 120000);
+    const timeoutId = controller ? setTimeout(() => controller.abort('request-timeout'), 120000) : null;
+    const signal = requestOptions.directSignal || controller.signal;
+    const serializedBody = JSON.stringify(body);
 
     let response;
     try {
+        if (typeof requestOptions.onDirectDispatch === 'function') requestOptions.onDirectDispatch();
         if (typeof requestOptions.onChunkKeyUsage === 'function') {
             requestOptions.onChunkKeyUsage({ provider: 'gemini_direct', model: modelName, key: apiKey, keyIndex });
         }
         response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            signal: controller.signal
+            body: serializedBody,
+            signal
         });
     } catch (fetchError) {
         if (fetchError.name === 'AbortError') {
@@ -686,7 +689,7 @@ async function requestDirectChunkTranslation(text, modelKeyPair, temperature, re
         });
     } finally {
         clearTimeout(timeoutId);
-        if (typeof unregisterActiveRequestController === 'function') {
+        if (controller && typeof unregisterActiveRequestController === 'function') {
             unregisterActiveRequestController(controller);
         }
     }

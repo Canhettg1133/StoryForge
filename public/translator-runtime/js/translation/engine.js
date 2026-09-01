@@ -81,10 +81,15 @@ function buildPromptedChunk(promptText, chunkText, sourceLang = 'auto', options 
 }
 
 function resolveEffectiveTranslationParallel(options = {}) {
-    const requestedParallel = typeof normalizeTranslatorParallel === 'function'
+    const useOllamaMode = Boolean(options.useOllamaMode);
+    const enhancedDirect = !useOllamaMode
+        && !options.useProxyMode
+        && globalThis.AiStudioScheduler?.isEnabled?.();
+    const requestedParallel = enhancedDirect
+        ? AiStudioScheduler.normalizeParallel(options.requestedParallel)
+        : typeof normalizeTranslatorParallel === 'function'
         ? normalizeTranslatorParallel(options.requestedParallel)
         : Math.max(1, Math.min(30, Number(options.requestedParallel) || 1));
-    const useOllamaMode = Boolean(options.useOllamaMode);
 
     if (useOllamaMode) return 1;
     return requestedParallel;
@@ -284,6 +289,7 @@ function isLargeFileSourceActive() {
 }
 
 function setTranslationButtonsBusy(isBusy) {
+    globalThis.AiStudioScheduler?.refreshSettings?.();
     const translateBtn = document.getElementById('translateBtn');
     const chunkSizeInput = document.getElementById('chunkSize');
     if (chunkSizeInput) chunkSizeInput.disabled = isBusy;
@@ -453,6 +459,7 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
     let largeFileRunStatus = 'failed';
     let shouldStartNextQueue = false;
     let largeIssueSummary = null;
+    let schedulingContext = null;
     let persistenceAvailable = Boolean(
         sessionId
         && (typeof currentTranslatorPersistenceAvailable === 'undefined' || currentTranslatorPersistenceAvailable)
@@ -675,7 +682,7 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
         );
     };
 
-    const processBatch = async (batch, rpmPlan = null) => {
+    const processBatch = async (batch, rpmPlan = null, runContext = null) => {
         if (!batch.length || cancelRequested) return;
         const rowsToPersist = [];
 
@@ -693,11 +700,14 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
             .filter(Boolean);
 
         const promises = dispatchBatch.map((chunk, batchOffset) => (async () => {
-            await sleep(batchOffset * staggerDelayMs);
-            await waitWhilePaused();
+            if (runContext) await runContext.waitWhilePaused();
+            else {
+                await sleep(batchOffset * staggerDelayMs);
+                await waitWhilePaused();
+            }
             if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
             const promptedChunk = buildPromptForLargeChunk(chunk);
-            return translateChunkWithRetry(promptedChunk, chunk.index);
+            return translateChunkWithRetry(promptedChunk, chunk.index, 5, runContext);
         })());
 
         const refreshBatchProgress = () => {
@@ -761,6 +771,7 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
             refreshBatchProgress();
         });
 
+        const persistRows = async () => {
         rowsToPersist.forEach((row) => {
             if (typeof getTranslatorChunkKeyUsagePatch === 'function') Object.assign(row, getTranslatorChunkKeyUsagePatch(row.chunkIndex));
             const chunk = batch.find(item => item.index === row.chunkIndex);
@@ -785,17 +796,23 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
                 warnPersistenceUnavailable(error);
             }
         }
+        };
+        if (runContext) await runContext.serialWrite(persistRows);
+        else await persistRows();
     };
 
     try {
+        if (globalThis.AiStudioScheduler?.isEnabled()) schedulingContext = AiStudioScheduler.createRun(parallelCount);
         persistLargeHistoryProgress(true);
         const reader = createLazyChunkReader(currentSourceFile, {
             chunkSize,
             startByte,
             startIndex: startChunkIndex,
         });
+        const pendingChunks = async function* () {
         for await (const chunk of reader) {
-            await waitWhilePaused();
+            if (schedulingContext) await schedulingContext.waitWhilePaused();
+            else await waitWhilePaused();
             if (cancelRequested) break;
 
             largeFileByteCursor = chunk.byteEnd;
@@ -810,15 +827,25 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
 
             const persistedOutput = persistedOutputByIndex.get(chunk.index);
             if (isPersistedTranslatorChunkProcessed(persistedOutput)) {
-                checkpointTracker.markProcessed(chunk);
                 if (persistedOutput.status === 'failed' && typeof trackChunkFailed === 'function') {
                     trackChunkFailed(chunk.index, persistedOutput.error || 'Cần xử lý lại');
                 } else if (typeof trackChunkSuccess === 'function') {
                     trackChunkSuccess(chunk.index, persistedOutput.outputText, '');
                 }
+                if (schedulingContext) yield { ...chunk, alreadyPersisted: true };
+                else checkpointTracker.markProcessed(chunk);
                 continue;
             }
 
+            yield chunk;
+        }
+        };
+        if (schedulingContext) {
+            await schedulingContext.runChunks(pendingChunks(), chunk => chunk.alreadyPersisted
+                ? schedulingContext.serialWrite(() => checkpointTracker.markProcessed(chunk))
+                : processBatch([chunk], null, schedulingContext));
+        } else {
+        for await (const chunk of pendingChunks()) {
             pendingBatch.push(chunk);
             const targetBatchSize = typeof getTranslatorRpmMaxBatchSize === 'function'
                 ? getTranslatorRpmMaxBatchSize({ requestedParallel: effectiveParallel })
@@ -841,6 +868,7 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
             if (cancelRequested || rpmPlan.capacity <= 0) break;
             await processBatch(pendingBatch.splice(0, Math.min(rpmPlan.capacity, pendingBatch.length)), rpmPlan);
         }
+        }
 
         if (!cancelRequested) {
             totalChunksCount = Math.max(0, lastDiscoveredChunkIndex + 1);
@@ -851,7 +879,11 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
         document.getElementById('resultSection').style.display = 'block';
 
         if (!cancelRequested && typeof runHanAuditAfterTranslation === 'function') {
-            await runHanAuditAfterTranslation();
+            const audit = await runHanAuditAfterTranslation(schedulingContext);
+            if (schedulingContext) {
+                schedulingContext.check();
+                if (audit?.error) throw audit.error;
+            }
         }
         updateLargePreview(cancelRequested ? '⏳ Chưa dịch' : '✅ Hoàn thành', true);
         await refreshLargeChunkIssueSummary(false);
@@ -892,6 +924,7 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
             : 'Dịch file lớn thất bại. Chi tiết kỹ thuật đã được ghi trong Console.';
         showToast(userMessage, 'error');
     } finally {
+        if (schedulingContext) await schedulingContext.close();
         persistLargeHistoryProgress(true);
         if (typeof flushHistoryWrites === 'function') {
             await flushHistoryWrites();
@@ -982,7 +1015,9 @@ async function startTranslation() {
     // Get settings
     const sourceLang = document.getElementById('sourceLang').value;
     const chunkSize = parseInt(document.getElementById('chunkSize').value) || 4500;
-    let parallelCount = typeof normalizeTranslatorParallel === 'function'
+    let parallelCount = globalThis.AiStudioScheduler?.isEnabled()
+        ? AiStudioScheduler.normalizeParallel(document.getElementById('parallelCount')?.value || 5)
+        : typeof normalizeTranslatorParallel === 'function'
         ? normalizeTranslatorParallel(document.getElementById('parallelCount')?.value || 5)
         : (parseInt(document.getElementById('parallelCount')?.value, 10) || 5);
     rpmPerKey = typeof normalizeTranslatorRpm === 'function'
@@ -1278,6 +1313,7 @@ async function startTranslation() {
     persistHistoryProgress(true);
 
     let textRunCompleted = false;
+    let schedulingContext = null;
     let finalTextIssueSummary = null;
     const summarizeTextChunkIssues = () => {
         if (typeof summarizeTranslatorChunkIssues !== 'function') return null;
@@ -1293,6 +1329,7 @@ async function startTranslation() {
     };
 
     try {
+        if (globalThis.AiStudioScheduler?.isEnabled()) schedulingContext = AiStudioScheduler.createRun(parallelCount);
         // Process in parallel batches
         let effectiveParallel;
         let staggerDelayMs;
@@ -1322,50 +1359,21 @@ async function startTranslation() {
             staggerDelayMs = 0;
         }
 
-        let nextChunkIndex = textStartChunkIndex;
-        while (nextChunkIndex < chunks.length && !cancelRequested) {
-            await waitWhilePaused();
-            if (cancelRequested) break;
-
-            const rpmPlan = typeof waitForTranslatorRpmBatchPlan === 'function'
-                ? await waitForTranslatorRpmBatchPlan({ requestedParallel: effectiveParallel, remainingChunks: chunks.length - nextChunkIndex })
-                : { capacity: effectiveParallel };
-            if (cancelRequested || rpmPlan.capacity <= 0) break;
-
-            const batchIndices = [];
-
-            while (batchIndices.length < rpmPlan.capacity && nextChunkIndex < chunks.length) {
-                const chunkIndex = nextChunkIndex;
-                nextChunkIndex += 1;
-
-                // Resume mode: skip chunks already translated
-                if (isChunkSuccessfullyTranslatedForResume(translatedChunks[chunkIndex])) {
-                    continue;
-                }
-
-                // Track chunk start
-                if (typeof trackChunkStart === 'function') {
-                    trackChunkStart(chunkIndex);
-                }
-
-                batchIndices.push(chunkIndex);
-            }
-
-            if (batchIndices.length === 0) {
-                continue;
-            }
-
+        const processTextBatch = async (batchIndices, rpmPlan, runContext = null) => {
             const dispatchIndices = useProxy && typeof buildTranslatorWaveAssignments === 'function'
                 ? buildTranslatorWaveAssignments(batchIndices, rpmPlan).map((assignment) => assignment.chunkIndex)
                 : orderProxyBatchIndicesForDispatch(batchIndices);
             const batch = dispatchIndices.map((chunkIndex, batchOffset) => (async () => {
-                await sleep(batchOffset * staggerDelayMs);
-                await waitWhilePaused();
+                if (runContext) await runContext.waitWhilePaused();
+                else {
+                    await sleep(batchOffset * staggerDelayMs);
+                    await waitWhilePaused();
+                }
                 if (cancelRequested) {
                     throw new Error('TRANSLATION_CANCELLED');
                 }
                 const promptedChunk = buildPromptedChunk(customPrompt, chunks[chunkIndex], sourceLang);
-                return translateChunkWithRetry(promptedChunk, chunkIndex);
+                return translateChunkWithRetry(promptedChunk, chunkIndex, 5, runContext);
             })());
             const waveRows = [];
 
@@ -1430,6 +1438,7 @@ async function startTranslation() {
                 }
             });
 
+            const persistRows = async () => {
             waveRows.forEach(row => {
                 if (typeof getTranslatorChunkKeyUsagePatch === 'function') Object.assign(row, getTranslatorChunkKeyUsagePatch(row.chunkIndex));
                 textCheckpointReady.add(row.chunkIndex);
@@ -1461,9 +1470,40 @@ async function startTranslation() {
                 }
             }
 
-            if (cancelRequested) {
-                persistHistoryProgress(true);
-                break;
+            };
+            if (runContext) await runContext.serialWrite(persistRows);
+            else await persistRows();
+        };
+
+        if (schedulingContext) {
+            const source = (async function* () {
+                for (let index = textStartChunkIndex; index < chunks.length; index += 1) {
+                    if (!isChunkSuccessfullyTranslatedForResume(translatedChunks[index])) yield { index };
+                }
+            })();
+            await schedulingContext.runChunks(source, chunk => {
+                if (typeof trackChunkStart === 'function') trackChunkStart(chunk.index);
+                return processTextBatch([chunk.index], null, schedulingContext);
+            });
+        } else {
+            let nextChunkIndex = textStartChunkIndex;
+            while (nextChunkIndex < chunks.length && !cancelRequested) {
+                await waitWhilePaused();
+                if (cancelRequested) break;
+                const rpmPlan = typeof waitForTranslatorRpmBatchPlan === 'function'
+                    ? await waitForTranslatorRpmBatchPlan({ requestedParallel: effectiveParallel, remainingChunks: chunks.length - nextChunkIndex })
+                    : { capacity: effectiveParallel };
+                if (cancelRequested || rpmPlan.capacity <= 0) break;
+                const batchIndices = [];
+                while (batchIndices.length < rpmPlan.capacity && nextChunkIndex < chunks.length) {
+                    const chunkIndex = nextChunkIndex++;
+                    if (isChunkSuccessfullyTranslatedForResume(translatedChunks[chunkIndex])) continue;
+                    if (typeof trackChunkStart === 'function') trackChunkStart(chunkIndex);
+                    batchIndices.push(chunkIndex);
+                }
+                if (batchIndices.length === 0) continue;
+                await processTextBatch(batchIndices, rpmPlan);
+                if (cancelRequested) { persistHistoryProgress(true); break; }
             }
         }
 
@@ -1503,7 +1543,8 @@ async function startTranslation() {
 
                     const stillFailed = [];
                     for (const idx of failedChunkIndices) {
-                        await waitWhilePaused();
+                        if (schedulingContext) await schedulingContext.waitWhilePaused();
+                        else await waitWhilePaused();
                         if (cancelRequested) break;
 
                         try {
@@ -1533,7 +1574,7 @@ async function startTranslation() {
                                     console.log(`[AUTO-RETRY] Chunk ${idx + 1}: Trying to SPLIT chunk...`);
                                     try {
                                         const splitResult = await translateLargeChunkBySplitting(
-                                            buildPromptedChunk(customPrompt, originalContent, sourceLang), idx
+                                            buildPromptedChunk(customPrompt, originalContent, sourceLang), idx, schedulingContext
                                         );
                                         if (splitResult && !splitResult.startsWith('[LỖI')) {
                                             translatedChunks[idx] = splitResult;
@@ -1558,7 +1599,7 @@ async function startTranslation() {
                             const highTemp = 0.7 + (round * 0.15);
 
                             let result;
-                            if (useOllama) {
+                            if (!schedulingContext && useOllama) {
                                 if (typeof waitForTranslatorProviderRpmSlot === 'function') {
                                     await waitForTranslatorProviderRpmSlot(TRANSLATOR_PROVIDERS.OLLAMA);
                                 }
@@ -1566,7 +1607,7 @@ async function startTranslation() {
                                     recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.OLLAMA, 0);
                                 }
                                 result = await translateWithOllama(promptToUse, highTemp, { chunkKeyUsage: { chunkIndex: idx, kind: 'retry' } });
-                            } else if (useProxy) {
+                            } else if (!schedulingContext && useProxy) {
                                 if (typeof sendProxyTranslationAttempt !== 'function') throwProxySchedulerUnavailable();
                                 const proxyAttempt = await sendProxyTranslationAttempt({
                                     chunkIndex: idx,
@@ -1577,6 +1618,7 @@ async function startTranslation() {
                                 result = proxyAttempt.result;
                             } else {
                                 const directAttempt = await sendDirectTranslationAttempt({
+                                    schedulingContext,
                                     chunkIndex: idx,
                                     text: promptToUse,
                                     temperature: highTemp,
@@ -1616,7 +1658,8 @@ async function startTranslation() {
                             stillFailed.push(idx);
                         }
 
-                        await sleep(1000);
+                        if (schedulingContext) await schedulingContext.sleep(1000);
+                        else await sleep(1000);
                         if (cancelRequested) break;
                     }
 
@@ -1638,7 +1681,8 @@ async function startTranslation() {
 
                     if (!cancelRequested && round < 3 && failedChunkIndices.length > 0) {
                         console.log(`[AUTO-RETRY] Waiting 2s before next round...`);
-                        await sleep(2000);
+                        if (schedulingContext) await schedulingContext.sleep(2000);
+                        else await sleep(2000);
                     }
                 }
 
@@ -1669,7 +1713,11 @@ ${chunks[idx]}
         }
 
         if (!cancelRequested && typeof runHanAuditAfterTranslation === 'function') {
-            await runHanAuditAfterTranslation();
+            const audit = await runHanAuditAfterTranslation(schedulingContext);
+            if (schedulingContext) {
+                schedulingContext.check();
+                if (audit?.error) throw audit.error;
+            }
         }
 
         finalTextIssueSummary = summarizeTextChunkIssues();
@@ -1746,11 +1794,13 @@ ${chunks[idx]}
             });
         }
     } finally {
+        if (schedulingContext) await schedulingContext.close();
         if (typeof notifyStoryForgeTranslatorStatus === 'function') {
             notifyStoryForgeTranslatorStatus(textRunCompleted ? 'completed' : 'failed', { force: true });
         }
         isTranslating = false;
         if (chunkSizeInput) chunkSizeInput.disabled = false;
+        globalThis.AiStudioScheduler?.refreshSettings?.();
         isPaused = false;
         translateBtn.disabled = false;
         translateBtn.innerHTML = '<span class="btn-icon">🚀</span><span class="btn-text">Bắt đầu dịch</span>';

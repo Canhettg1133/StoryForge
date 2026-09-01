@@ -20,6 +20,7 @@ let ollamaTotalChunks = 0;
 
 // Toggle Ollama mode
 function toggleOllamaMode() {
+    if (globalThis.AiStudioScheduler?.guardSettingsChange()) return;
     const toggle = document.getElementById('useOllamaToggle');
     const settings = document.getElementById('ollamaSettings');
     const badge = document.getElementById('ollamaStatus');

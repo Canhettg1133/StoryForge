@@ -509,7 +509,7 @@ describe('Translator Han file audit integration contract', () => {
     const worker = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/translation/han-audit-worker.js'), 'utf8');
     const init = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/init.js'), 'utf8');
 
-    expect(engine.match(/await runHanAuditAfterTranslation\(\);/g)).toHaveLength(2);
+    expect(engine.match(/await runHanAuditAfterTranslation\(schedulingContext\);/g)).toHaveLength(2);
     expect(html).toContain('Quét Hán tự trong file đã dịch');
     expect(html).toContain('id="hanFileAudit"');
     expect(html).toContain('js/translation/han-audit/file-source.js');

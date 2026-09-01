@@ -50,6 +50,7 @@ function togglePause() {
     if (typeof notifyStoryForgeTranslatorStatus === 'function') {
         notifyStoryForgeTranslatorStatus(isPaused ? 'paused' : 'running', { force: true });
     }
+    globalThis.AiStudioScheduler?.activeRun?.wake();
 }
 
 // Wait while paused
@@ -152,6 +153,7 @@ function executeCancel() {
     // Set cancel flag
     cancelRequested = true;
     isPaused = false;
+    globalThis.AiStudioScheduler?.activeRun?.cancel();
     if (typeof cancelHanAudit === 'function' && typeof isHanAuditBusy !== 'undefined' && isHanAuditBusy) {
         cancelHanAudit();
     }

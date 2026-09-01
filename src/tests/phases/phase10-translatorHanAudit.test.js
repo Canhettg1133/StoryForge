@@ -320,11 +320,11 @@ describe('translator Han audit integration contract', () => {
   it('keeps completion and queue handoff behind the automatic audit barrier', () => {
     const engine = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/translation/engine.js'), 'utf8');
     const history = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/history/history.js'), 'utf8');
-    const largeAudit = engine.indexOf('await runHanAuditAfterTranslation();');
+    const largeAudit = engine.indexOf('await runHanAuditAfterTranslation(schedulingContext);');
     const largeResultVisible = engine.lastIndexOf("document.getElementById('resultSection').style.display = 'block';", largeAudit);
     const largeCompleted = engine.indexOf("largeFileRunStatus = 'completed'", largeAudit);
     const largeFinalHistory = engine.indexOf('persistLargeHistoryProgress(true);', largeResultVisible);
-    const textAudit = engine.indexOf('await runHanAuditAfterTranslation();', largeAudit + 1);
+    const textAudit = engine.indexOf('await runHanAuditAfterTranslation(schedulingContext);', largeAudit + 1);
     const textHistory = engine.indexOf('finalTextIssueSummary = summarizeTextChunkIssues();', textAudit);
 
     expect(largeAudit).toBeGreaterThan(-1);

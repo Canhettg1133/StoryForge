@@ -14,7 +14,8 @@ function updateTranslationRuntimeStatus(message) {
     if (statusEl) statusEl.textContent = countdownStatus || message;
 }
 
-async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
+async function translateChunkWithRetry(text, chunkIndex, retries = 5, schedulingContext = null, initialKind = 'main') {
+    const wait = schedulingContext ? ms => schedulingContext.sleep(ms) : sleep;
     if (cancelRequested) {
         throw new Error('TRANSLATION_CANCELLED');
     }
@@ -65,7 +66,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             }
 
             // ========== OLLAMA MODE ==========
-            if (useOllama) {
+            if (!schedulingContext && useOllama) {
                 // ========== PROGRESSIVE PROMPT CHO OLLAMA ==========
                 let promptToUse = originalRequest;
 
@@ -103,7 +104,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             }
 
             // ========== PROXY MODE ==========
-            if (useProxy) {
+            if (!schedulingContext && useProxy) {
                 // Progressive prompt cho Proxy (giống Gemini)
                 let promptToUse = originalRequest;
 
@@ -141,10 +142,11 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
 
             console.log(`[Gemini] Chunk ${chunkIndex + 1}, attempt ${attempt}/${retries}, temp=${temperature}`);
             const directAttempt = await sendDirectTranslationAttempt({
+                schedulingContext,
                 chunkIndex,
                 text: promptToUse,
                 temperature,
-                kind: attempt > 1 ? 'retry' : 'main',
+                kind: attempt > 1 ? 'retry' : initialKind,
             });
             modelKeyPair = directAttempt.modelKeyPair;
             const result = directAttempt.result;
@@ -167,7 +169,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             const combinedErrorMsg = `${errorMsg} ${rawErrorMsg}`;
 
             // ========== PROXY MODE: XỬ LÝ 403/429 ĐẶC BIỆT ==========
-            if (useProxy) {
+            if (!schedulingContext && useProxy) {
                 const is403 = errorCode === 'PROXY_BACKEND_SUSPENDED' || combinedErrorMsg.includes('403') || combinedErrorMsg.includes('suspended');
                 const is429 = errorCode === 'PROXY_RATE_LIMIT' || combinedErrorMsg.includes('429') || combinedErrorMsg.includes('rate limit');
 
@@ -205,7 +207,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 if (shortOutputCount >= 4 && originalRequest.sourceText.length > 1000) {
                     console.log(`[Chunk ${chunkIndex + 1}] 📦 Chia nhỏ chunk do output liên tục quá ngắn...`);
                     try {
-                        return await translateLargeChunkBySplitting(originalRequest, chunkIndex);
+                        return await translateLargeChunkBySplitting(originalRequest, chunkIndex, schedulingContext);
                     } catch (splitError) {
                         console.error(`[Chunk ${chunkIndex + 1}] ❌ Chia nhỏ cũng thất bại`);
                     }
@@ -215,7 +217,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                     throw translatorError || error;
                 }
 
-                await sleep(500);
+                await wait(500);
                 continue;
             }
 
@@ -225,7 +227,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 shortOutputCount++;
                 console.warn(`[Chunk ${chunkIndex + 1}] ⚠️ Output không có tiếng Việt, thử prompt khác...`);
                 if (attempt === retries) throw translatorError || error;
-                await sleep(500);
+                await wait(500);
                 continue;
             }
 
@@ -235,7 +237,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 shortOutputCount++;
                 console.warn(`[Chunk ${chunkIndex + 1}] ⚠️ AI từ chối dịch, thử prompt literary/fictional...`);
                 if (attempt === retries) throw translatorError || error;
-                await sleep(500);
+                await wait(500);
                 continue;
             }
 
@@ -244,7 +246,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             if (isPromptLeak) {
                 console.warn(`[Chunk ${chunkIndex + 1}] ⚠️ AI lặp lại prompt, thử lại...`);
                 if (attempt === retries) throw translatorError || error;
-                await sleep(300);
+                await wait(300);
                 continue;
             }
 
@@ -286,13 +288,13 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 if (shortOutputCount >= 3 && originalRequest.sourceText.length > 1000) {
                     console.log(`[Chunk ${chunkIndex + 1}] 📦 Chia nhỏ chunk do bị block...`);
                     try {
-                        return await translateLargeChunkBySplitting(originalRequest, chunkIndex);
+                        return await translateLargeChunkBySplitting(originalRequest, chunkIndex, schedulingContext);
                     } catch (splitError) {
                         console.error(`[Chunk ${chunkIndex + 1}] ❌ Chia nhỏ cũng thất bại`);
                     }
                 }
 
-                await sleep(500);
+                await wait(500);
                 continue;
             }
 
@@ -336,7 +338,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 if (originalRequest.sourceText.length > 1000 && !originalRequest.sourceText.includes('[AUTO-SPLIT]')) {
                     console.log(`[Chunk ${chunkIndex + 1}] 📦 Final attempt: splitting chunk...`);
                     try {
-                        return await translateLargeChunkBySplitting(originalRequest, chunkIndex);
+                        return await translateLargeChunkBySplitting(originalRequest, chunkIndex, schedulingContext);
                     } catch (splitError) {
                         throw error;
                     }
@@ -350,7 +352,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             }
 
             console.log(`[Chunk ${chunkIndex + 1}] Waiting ${waitTime / 1000}s before retry...`);
-            await sleep(waitTime);
+            await wait(waitTime);
         }
     }
 
@@ -361,7 +363,8 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
 // ============================================
 // SPLIT LARGE CHUNK - Chia nhỏ chunk thông minh
 // ============================================
-async function translateLargeChunkBySplitting(text, chunkIndex) {
+async function translateLargeChunkBySplitting(text, chunkIndex, schedulingContext = null) {
+    const wait = schedulingContext ? ms => schedulingContext.sleep(ms) : sleep;
     if (cancelRequested) {
         throw new Error('TRANSLATION_CANCELLED');
     }
@@ -390,7 +393,7 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
         console.log(`[Chunk ${chunkIndex + 1}] Translating sub-chunk ${i + 1}/${parts.length}...`);
 
         try {
-            if (useOllama) {
+            if (!schedulingContext && useOllama) {
                 if (typeof waitForTranslatorProviderRpmSlot === 'function') {
                     await waitForTranslatorProviderRpmSlot(TRANSLATOR_PROVIDERS.OLLAMA);
                 }
@@ -401,7 +404,7 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
                     chunkKeyUsage: { chunkIndex, kind: 'split_retry', partIndex: i },
                 });
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));
-            } else if (useProxy) {
+            } else if (!schedulingContext && useProxy) {
                 // Proxy mode - gọi trực tiếp với key theo chunk
                 if (typeof sendProxyTranslationAttempt !== 'function') throwProxySchedulerUnavailable();
                 const result = (await sendProxyTranslationAttempt({
@@ -414,6 +417,7 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));
             } else {
                 const directAttempt = await sendDirectTranslationAttempt({
+                    schedulingContext,
                     chunkIndex,
                     text: partRequest,
                     temperature: 0.8,
@@ -429,11 +433,11 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
                 throw new Error('TRANSLATION_CANCELLED');
             }
             console.warn(`[Chunk ${chunkIndex + 1}] Sub-chunk ${i + 1} failed: ${e.message}`);
-            if (!useProxy && !useOllama) throw e;
+            if (schedulingContext || (!useProxy && !useOllama)) throw e;
             // Giữ nguyên text gốc nếu sub-chunk fail
             translatedParts.push(parts[i]);
         }
-        await sleep(500);
+        await wait(500);
     }
 
     const combined = translatedParts.join('\n');

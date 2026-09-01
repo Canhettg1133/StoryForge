@@ -577,6 +577,7 @@ const PROXY_RATE_LIMIT_BACKOFF_JITTER_RATIO = 0.2;
 const TRANSLATOR_RPM_RESERVATION_POLL_MS = 250;
 
 function setActiveTranslatorProvider(provider) {
+    if (globalThis.AiStudioScheduler?.guardSettingsChange()) return activeTranslatorProvider;
     const allowedProviders = Object.values(TRANSLATOR_PROVIDERS);
     activeTranslatorProvider = allowedProviders.includes(provider)
         ? provider
@@ -1867,6 +1868,7 @@ function getActiveModels() {
 }
 
 function resetGeminiModels() {
+    if (globalThis.AiStudioScheduler?.guardSettingsChange()) return;
     if (!confirm('Reset về danh sách model mặc định?')) return;
     GEMINI_MODELS = JSON.parse(JSON.stringify(DEFAULT_GEMINI_MODELS));
     saveGeminiModels();
@@ -1875,6 +1877,7 @@ function resetGeminiModels() {
 }
 
 function useCustomGeminiModel() {
+    if (globalThis.AiStudioScheduler?.guardSettingsChange()) return;
     const nameInput = document.getElementById('customModelName');
     const selected = selectGeminiModel(nameInput?.value);
     if (selected && nameInput) nameInput.value = '';
@@ -1915,6 +1918,7 @@ function ensureAIStudioModelCandidate(modelName) {
 }
 
 function selectGeminiModel(modelName) {
+    if (globalThis.AiStudioScheduler?.guardSettingsChange()) return;
     const normalizedName = normalizeAIStudioModelId(modelName);
     if (!normalizedName) {
         showToast('Vui lòng chọn hoặc nhập model Gemini Direct.', 'warning');
@@ -2112,6 +2116,7 @@ function setupEventListeners() {
 // API KEYS MANAGEMENT
 // ============================================
 function addApiKey() {
+    if (globalThis.AiStudioScheduler?.guardSettingsChange()) return;
     const input = document.getElementById('newApiKey');
     const key = input.value.trim();
 
@@ -2135,6 +2140,7 @@ function addApiKey() {
 }
 
 function removeApiKey(index) {
+    if (globalThis.AiStudioScheduler?.guardSettingsChange()) return;
     apiKeys.splice(index, 1);
     delete keyHealthMap[index];
 
@@ -2151,6 +2157,7 @@ function removeApiKey(index) {
 }
 
 function resetRotationAndRefresh() {
+    if (globalThis.AiStudioScheduler?.guardSettingsChange()) return;
     resetRotationSystem();
     resetKeyHealth();
     renderApiKeysList();

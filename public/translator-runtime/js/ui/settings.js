@@ -106,6 +106,7 @@ function getActiveRateLimitUnitCount() {
 }
 
 function getRateLimitSummaryText() {
+    if (globalThis.AiStudioScheduler?.isEnabled()) return AiStudioScheduler.rateSummary();
     const parallelInput = document.getElementById('parallelCount');
     const rpmInput = document.getElementById('rpmPerKey');
     const parallel = typeof normalizeTranslatorParallel === 'function'
@@ -374,6 +375,7 @@ function toggleHistoryPanel(forceOpen) {
 }
 
 function saveSettings(options = {}) {
+    const aiStudioSettings = globalThis.AiStudioScheduler?.settingsPayload?.();
     const promptInput = document.getElementById('customPrompt');
     const shouldNormalizePrompt = options.normalizePrompt === true;
     const shouldPersistPrompt = options.persistPrompt !== false;
@@ -389,6 +391,7 @@ function saveSettings(options = {}) {
         apiKeys: apiKeys,
         sourceLang: document.getElementById('sourceLang').value,
         parallelCount: document.getElementById('parallelCount').value,
+        ...aiStudioSettings,
         chunkSize: document.getElementById('chunkSize').value,
         rpmPerKey: document.getElementById('rpmPerKey')?.value || rpmPerKey,
         ...(shouldPersistPrompt ? { customPrompt: normalizedPrompt } : {}),
@@ -514,6 +517,7 @@ function loadSettings() {
             if (!customProxyApiKeys.length && customProxyApiKey) {
                 customProxyApiKeys = [customProxyApiKey];
             }
+            globalThis.AiStudioScheduler?.loadConfig?.(settings);
         } catch (e) {
             console.error('Error loading settings:', e);
         }

@@ -491,21 +491,27 @@ async function persistHanCorrection(chunkIndex, outputText) {
     }
 }
 
-async function correctHanAuditIssue(issue) {
+async function correctHanAuditIssue(issue, schedulingContext = null) {
     const chunkIndex = Math.max(0, Math.trunc(Number(issue?.chunkIndex) || 0));
     try {
         const content = await getHanAuditChunkContent(chunkIndex);
         if (!content.sourceText) return { ok: false, issue: { ...issue, error: 'missing_source' } };
         const request = buildHanCorrectionRequest(content.sourceText);
-        const outputText = await translateChunkWithRetry(request, chunkIndex);
+        const outputText = schedulingContext
+            ? await translateChunkWithRetry(request, chunkIndex, 5, schedulingContext, 'retry')
+            : await translateChunkWithRetry(request, chunkIndex);
         if (!outputText || String(outputText).startsWith('[L\u1ED6I')) {
             return { ok: false, issue: { ...issue, error: 'invalid_output' } };
         }
         const match = getHanAuditCore()?.scanHanInText(outputText);
-        await persistHanCorrection(chunkIndex, outputText);
+        if (schedulingContext) {
+            schedulingContext.check();
+            await schedulingContext.serialWrite(() => persistHanCorrection(chunkIndex, outputText));
+        } else await persistHanCorrection(chunkIndex, outputText);
         if (match?.hanCount > 0) return { ok: false, persisted: true, issue: { chunkIndex, ...match } };
         return { ok: true, persisted: true, chunkIndex };
     } catch (error) {
+        if (schedulingContext) schedulingContext.check();
         return { ok: false, issue: { ...issue, error: String(error?.message || error || '') } };
     }
 }
@@ -555,6 +561,7 @@ function mergeHanAuditIssueLists(...groups) {
 }
 
 async function retryHanAuditIssues(options = {}) {
+    const schedulingContext = options.schedulingContext || null;
     const allowWhileTranslating = options.allowWhileTranslating === true;
     const deferDerivedUpdates = options.deferDerivedUpdates === true;
     const externalAuditBusy = Boolean(globalThis.isHanFileAuditBusy || globalThis.isChunkIssueRetryBusy);
@@ -584,7 +591,7 @@ async function retryHanAuditIssues(options = {}) {
     }, { force: true });
     await patchHanAuditSession('correcting', issues);
     try {
-        const requestedParallel = typeof normalizeTranslatorParallel === 'function'
+        const requestedParallel = schedulingContext ? schedulingContext.parallel : typeof normalizeTranslatorParallel === 'function'
             ? normalizeTranslatorParallel(document.getElementById('parallelCount')?.value || 1)
             : Math.max(1, Math.min(30, Number(document.getElementById('parallelCount')?.value) || 1));
         if (typeof TranslatorHanCorrectionRunner === 'undefined') {
@@ -593,9 +600,13 @@ async function retryHanAuditIssues(options = {}) {
         const runResult = await TranslatorHanCorrectionRunner.run({
             items: issues,
             requestedParallel,
-            shouldCancel: () => hanAuditCancelRequested,
+            shouldCancel: () => {
+                if (schedulingContext) schedulingContext.check();
+                return hanAuditCancelRequested || Boolean(schedulingContext && cancelRequested);
+            },
             getPlan: ({ requestedParallel: waveParallel, remainingChunks }) => (
-                typeof waitForTranslatorRpmBatchPlan === 'function'
+                schedulingContext ? { capacity: Math.min(waveParallel, remainingChunks) }
+                : typeof waitForTranslatorRpmBatchPlan === 'function'
                     ? waitForTranslatorRpmBatchPlan({ requestedParallel: waveParallel, remainingChunks })
                     : { capacity: Math.min(waveParallel, remainingChunks) }
             ),
@@ -604,7 +615,7 @@ async function retryHanAuditIssues(options = {}) {
                     buildTranslatorWaveAssignments(wave.map(issue => issue.chunkIndex), rpmPlan);
                 }
             },
-            correctItem: correctHanAuditIssue,
+            correctItem: issue => correctHanAuditIssue(issue, schedulingContext),
             onWaveComplete: ({ processed, results }) => {
                 results.forEach((result) => {
                     if (result.ok) succeeded += 1;
@@ -671,10 +682,11 @@ async function retryHanAuditIssues(options = {}) {
     }
 }
 
-async function runHanAuditAfterTranslation() {
+async function runHanAuditAfterTranslation(schedulingContext = null) {
     const scan = await runHanAuditScan({ allowWhileTranslating: true, silent: true });
     if (!scan.ok || scan.issues.length === 0) return scan;
     return retryHanAuditIssues({
+        schedulingContext,
         allowWhileTranslating: true,
         deferDerivedUpdates: true,
         silent: true,

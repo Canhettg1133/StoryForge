@@ -23,6 +23,7 @@ function setBadgeState(id, isActive) {
 }
 
 function updateProxyModeControls() {
+    globalThis.AiStudioScheduler?.refreshSettings?.();
     const isAgActive = useProxy && activeTranslatorProvider === TRANSLATOR_PROVIDERS.AG_PROXY;
     const isCustomActive = useProxy && activeTranslatorProvider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
     const isDirectActive = !useProxy
@@ -70,6 +71,7 @@ function disableOllamaProvider() {
 // GEMINI PROXY AG
 // ============================================
 function toggleProxyMode() {
+    if (globalThis.AiStudioScheduler?.guardSettingsChange()) return;
     const toggle = getElement('useProxyToggle');
     const shouldEnable = Boolean(toggle?.checked);
     useProxy = shouldEnable;
@@ -474,6 +476,7 @@ function updateProxyConfig() {
 }
 
 function activateGeminiDirect() {
+    if (globalThis.AiStudioScheduler?.guardSettingsChange()) return;
     disableOllamaProvider();
     useProxy = false;
     setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.GEMINI_DIRECT);
@@ -1039,6 +1042,7 @@ function renderCustomProxyPreviews() {
 }
 
 function toggleCustomProxyMode() {
+    if (globalThis.AiStudioScheduler?.guardSettingsChange()) return;
     const toggle = getElement('customProxyToggle');
     const shouldEnable = Boolean(toggle?.checked);
     useProxy = shouldEnable;

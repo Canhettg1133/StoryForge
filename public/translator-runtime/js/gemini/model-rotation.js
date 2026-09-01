@@ -327,20 +327,23 @@ async function sendDirectTranslationAttempt(options = {}) {
     const kind = String(options.kind || 'main');
 
     if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
-    const modelKeyPair = await waitForNextModelKeyPairWithQueue(kind);
-    if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
-
-    try {
-        const result = await translateChunk(text, modelKeyPair, temperature, {
-            ...options.requestOptions,
-            chunkKeyUsage: { chunkIndex: options.chunkIndex, kind, partIndex: options.partIndex },
-        });
-        return { result, modelKeyPair };
-    } catch (error) {
-        recordDirectAttemptFailure(error, modelKeyPair);
-        if (error && typeof error === 'object') error.modelKeyPairUsed = modelKeyPair;
-        throw error;
-    }
+    const send = async (modelKeyPair, transportOptions = {}) => {
+        if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
+        try {
+            const result = await translateChunk(text, modelKeyPair, temperature, {
+                ...options.requestOptions,
+                ...transportOptions,
+                chunkKeyUsage: { chunkIndex: options.chunkIndex, kind, partIndex: options.partIndex },
+            });
+            return { result, modelKeyPair };
+        } catch (error) {
+            recordDirectAttemptFailure(error, modelKeyPair);
+            if (error && typeof error === 'object') error.modelKeyPairUsed = modelKeyPair;
+            throw error;
+        }
+    };
+    if (options.schedulingContext) return options.schedulingContext.scheduleAttempt(options, send);
+    return send(await waitForNextModelKeyPairWithQueue(kind));
 }
 
 // ============================================
@@ -700,6 +703,7 @@ function parseApiKeysFromText(text) {
 }
 
 function executeImportApiKeys() {
+    if (globalThis.AiStudioScheduler?.guardSettingsChange()) return;
     const textarea = document.getElementById('keyImportTextarea');
     const rawText = textarea.value;
 
