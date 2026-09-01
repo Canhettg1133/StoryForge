@@ -50,6 +50,29 @@ describe('Scheduler lifecycle', () => {
         r.enqueueMany(8); await r.advance(10000);
         expect(r.counts()).toEqual([0,1]);
     });
+    it('releases a partially filled wave when its key enters cooldown', async () => {
+        r = runtime({parallel:4,rpm:2,count:2});
+        let releaseFirst;
+        const holdFirst = new Promise(resolve => { releaseFirst = resolve; });
+        const sends = [];
+        const first = r.scheduler.enqueue({kind:'main',run:async lease=>{
+            lease.commit();sends.push({key:lease.pair.keyIndex,at:r.now});
+            vm.runInContext(`recordModelKeyError('test-model',${lease.pair.keyIndex},90)`,r.context);
+            await holdFirst;
+        }}).catch(error=>error);
+        await flush();
+        const second = r.scheduler.enqueue({kind:'main',run:async lease=>{
+            lease.commit();sends.push({key:lease.pair.keyIndex,at:r.now});
+        }}).catch(error=>error);
+        await flush();
+        expect(sends).toEqual([{key:0,at:100000}]);
+
+        releaseFirst();await flush();
+        await r.advance(9999);expect(sends).toHaveLength(1);
+        await r.advance(1);
+        expect(sends).toEqual([{key:0,at:100000},{key:1,at:110000}]);
+        await Promise.all([first,second]);
+    });
     it('terminates when every key is permanently invalid', async () => {
         r = runtime({parallel:1,count:1});
         r.gate.fail(r.keys[0],{code:'INVALID_API_KEY'});

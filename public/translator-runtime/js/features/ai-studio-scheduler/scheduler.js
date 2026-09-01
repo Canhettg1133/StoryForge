@@ -5,69 +5,38 @@
         const limit = ns.normalizeParallel(parallel);
         const allocations = ns.allocate(limit, keys.length, rpm);
         const startedAt = clock.now();
-        const lanes = keys.map((key, index) => ({ key, limit: allocations[index], inFlight: 0,
+        const lanes = keys.map((key, index) => ({ key, index, limit: allocations[index], inFlight: 0,
             opened: false, opensAt: startedAt + index * ns.STAGGER_MS,
-            nextWaveAt: startedAt + index * ns.STAGGER_MS, waveSlots: 0,
-            cooldownUntil: 0, recoveryAt: 0, recoveryPending: false }));
+            nextWaveAt: startedAt + index * ns.STAGGER_MS, pendingCommits: 0,
+            waveSlots: 0, retrySlots: 0 }));
         const main = [];
         const retries = [];
         const active = new Set();
         let inFlight = 0;
         let cursor = 0;
-        let lastOpenedAt = -Infinity;
-        let lastWaveStartedAt = -Infinity;
-        let openingLane = null;
-        let waveOpeningLane = null;
+        let lastWaveSentAt = -Infinity;
+        let activeSendingLane = null;
         let stopped = null;
         let scheduled = false;
 
-        function readLaneHealth(now) {
-            const health = lanes.map(lane => gate.health(lane.key));
-            const recovering = [];
-            lanes.forEach((lane, index) => {
-                if (health[index].disabled) {
-                    lane.cooldownUntil = 0; lane.recoveryAt = 0; lane.recoveryPending = false;
-                    return;
-                }
-                if (health[index].cooldownMs > 0) {
-                    lane.cooldownUntil = Math.max(lane.cooldownUntil, now + health[index].cooldownMs);
-                    lane.recoveryPending = true;
-                }
-                if (lane.recoveryPending) recovering.push({ lane, index });
-                else { lane.cooldownUntil = 0; lane.recoveryAt = 0; }
-            });
-            recovering.sort((left, right) => left.lane.cooldownUntil - right.lane.cooldownUntil || left.index - right.index);
-            let previousRecoveryAt = -Infinity;
-            recovering.forEach(({ lane }) => {
-                const earliest = Math.max(lane.cooldownUntil,
-                    Number.isFinite(previousRecoveryAt) ? previousRecoveryAt + ns.STAGGER_MS : now);
-                lane.recoveryAt = Math.max(lane.recoveryAt, earliest);
-                previousRecoveryAt = lane.recoveryAt;
-            });
-            return health;
-        }
         function getLaneWaitState(lane, health, now) {
             if (health.disabled) return { reason: 'disabled', waitMs: 0 };
             if (isPaused()) return { reason: 'paused', waitMs: 0 };
-            const recoveryWaitMs = Math.max(0, lane.recoveryAt - now);
-            const retryWaiting = retries.some(job => job.waitingKeyIndex === lane.key.keyIndex);
-            const scheduleDeadline = lane.opened
-                ? Math.max(lane.nextWaveAt, lastWaveStartedAt + ns.STAGGER_MS)
-                : Math.max(lane.opensAt, lastOpenedAt + ns.STAGGER_MS, lastWaveStartedAt + ns.STAGGER_MS);
-            const scheduleWaitMs = lane.waveSlots > 0 || (lane.opened && retryWaiting && health.remaining > 0)
-                ? 0 : Math.max(0, scheduleDeadline - now);
+            if (activeSendingLane && activeSendingLane !== lane) return { reason: 'previous-wave', waitMs: 0 };
+            const ownDeadline = lane.opened ? lane.nextWaveAt : lane.opensAt;
+            const crossKeyDeadline = lastWaveSentAt + ns.STAGGER_MS;
+            const scheduleWaitMs = Math.max(0, ownDeadline - now, crossKeyDeadline - now);
             const blockers = [
                 { reason: lane.opened ? 'wave' : 'stagger', waitMs: scheduleWaitMs },
                 { reason: 'rpm', waitMs: health.remaining <= 0 ? health.rpmWaitMs : 0 },
                 { reason: 'cooldown', waitMs: health.cooldownMs },
-                { reason: 'restagger', waitMs: recoveryWaitMs },
             ];
             return blockers.reduce((longest, blocker) => blocker.waitMs > longest.waitMs ? blocker : longest,
                 { reason: 'ready', waitMs: 0 });
         }
         function snapshot() {
             const now = clock.now();
-            const laneHealth = readLaneHealth(now);
+            const laneHealth = lanes.map(lane => gate.health(lane.key));
             return { inFlight, parallel: limit, paused: isPaused(), pending: main.length,
                 keys: lanes.map((lane, index) => {
                     const health = laneHealth[index];
@@ -89,30 +58,38 @@
             scheduled = true;
             Promise.resolve().then(() => { scheduled = false; pump(); }).catch(stop);
         }
-        function dispatch(lane, job, partOfWave) {
+        function releaseActiveWaveIfDone(lane) {
+            if (activeSendingLane !== lane || lane.pendingCommits > 0) return;
+            if (lane.waveSlots <= 0 || lane.inFlight <= 0) {
+                lane.waveSlots = 0; lane.retrySlots = 0; activeSendingLane = null;
+            }
+        }
+        function dispatch(lane, job) {
             const lease = gate.reserve(lane.key, job.kind);
             if (!lease) return false;
-            if (partOfWave) lane.waveSlots -= 1;
-            inFlight += 1; lane.inFlight += 1;
+            inFlight += 1; lane.inFlight += 1; lane.pendingCommits += 1;
             const commit = lease.commit;
             let committed = false;
+            let pendingCommitReleased = false;
             let deferredForPause = false;
+            const releasePendingCommit = () => {
+                if (pendingCommitReleased) return;
+                pendingCommitReleased = true;
+                lane.pendingCommits = Math.max(0, lane.pendingCommits - 1);
+                releaseActiveWaveIfDone(lane);
+            };
             lease.commit = () => {
                 if (stopped || isCancelled()) throw ns.cancelledError();
                 if (isPaused() && !committed) { deferredForPause = true; throw new Error('AI_STUDIO_ATTEMPT_PAUSED'); }
                 commit();
-                const sentAt = clock.now();
-                if (!lane.opened) {
-                    lane.opened = true; lastOpenedAt = sentAt; openingLane = null;
-                }
-                if (lane.recoveryPending && sentAt >= lane.recoveryAt) {
-                    lane.cooldownUntil = 0; lane.recoveryAt = 0; lane.recoveryPending = false;
-                }
-                if (!committed && partOfWave) {
-                    if (waveOpeningLane === lane) { lastWaveStartedAt = sentAt; waveOpeningLane = null; }
+                if (!committed) {
+                    const sentAt = clock.now();
+                    lane.opened = true;
+                    lastWaveSentAt = Math.max(lastWaveSentAt, sentAt);
                     lane.nextWaveAt = Math.max(lane.nextWaveAt, sentAt + ns.WINDOW_MS);
+                    committed = true;
+                    releasePendingCommit();
                 }
-                committed = true;
             };
             const task = Promise.resolve().then(() => {
                 if (stopped) throw stopped;
@@ -120,12 +97,11 @@
             }).then(job.resolve, error => {
                 if (deferredForPause && !committed && !stopped && !isCancelled()) {
                     (job.kind === 'main' ? main : retries).unshift(job);
+                    cursor = lane.index;
                 } else { gate.fail(lane.key, error); job.reject(error); }
             }).finally(() => {
-                lease.release(); inFlight -= 1; lane.inFlight -= 1; wake();
-                if (!committed && partOfWave) lane.waveSlots += 1;
-                if (!committed && !deferredForPause && lane.inFlight === 0 && openingLane === lane) openingLane = null;
-                if (!committed && lane.inFlight === 0 && waveOpeningLane === lane) waveOpeningLane = null;
+                if (!committed) releasePendingCommit();
+                lease.release(); inFlight -= 1; lane.inFlight -= 1; releaseActiveWaveIfDone(lane); wake();
                 active.delete(task);
             });
             active.add(task);
@@ -136,7 +112,7 @@
             if (isCancelled()) { stop(ns.cancelledError()); return; }
             clock.clear();
             const now = clock.now();
-            const laneHealth = readLaneHealth(now);
+            const laneHealth = lanes.map(lane => gate.health(lane.key));
             if (lanes.length === 0 || laneHealth.every(health => health.disabled)) {
                 stop(createGeminiRotationError('INVALID_API_KEY', 'Không còn API key AI Studio sử dụng được trong lượt dịch này.', { retryable: false }));
                 return;
@@ -147,26 +123,35 @@
                     const index = (first + offset) % lanes.length;
                     const lane = lanes[index];
                     const health = laneHealth[index];
-                    if (health.disabled || health.cooldownMs > 0 || lane.recoveryAt > now || health.remaining <= 0) continue;
-                    if (!lane.opened && (now < lane.opensAt || now < lastOpenedAt + ns.STAGGER_MS
-                        || (openingLane && openingLane !== lane))) continue;
+                    if (health.disabled || health.cooldownMs > 0 || health.remaining <= 0) continue;
                     if (!main.length && !retries.length) break;
-                    if (now >= lane.nextWaveAt || (!lane.opened && lane.waveSlots <= 0)) {
-                        if (now < lastWaveStartedAt + ns.STAGGER_MS
-                            || (waveOpeningLane && waveOpeningLane !== lane)) continue;
-                        lane.waveSlots = Math.min(lane.limit - lane.inFlight, health.remaining, limit - inFlight);
-                        if (lane.waveSlots <= 0) continue;
-                        if (!lane.opened) openingLane = lane;
-                        waveOpeningLane = lane;
-                        lane.nextWaveAt = now + ns.WINDOW_MS;
+                    const continuingWave = activeSendingLane === lane && lane.waveSlots > 0;
+                    let openedWave = false;
+                    if (!continuingWave) {
+                        const ownDeadline = lane.opened ? lane.nextWaveAt : lane.opensAt;
+                        if (lane.pendingCommits > 0 || now < ownDeadline || now < lastWaveSentAt + ns.STAGGER_MS
+                            || activeSendingLane) continue;
+                        const waveLimit = Math.min(lane.limit - lane.inFlight, health.remaining, limit - inFlight);
+                        if (waveLimit <= 0) continue;
+                        lane.waveSlots = waveLimit;
+                        lane.retrySlots = Math.min(retries.length, waveLimit);
+                        activeSendingLane = lane;
+                        openedWave = true;
                     }
-                    while (inFlight < limit && lane.inFlight < lane.limit) {
-                        const queue = retries.length ? retries : lane.waveSlots > 0 ? main : [];
+                    let dispatched = 0;
+                    while (lane.waveSlots > 0 && inFlight < limit && lane.inFlight < lane.limit) {
+                        const queue = lane.retrySlots > 0 && retries.length ? retries : main;
                         if (!queue.length) break;
                         const job = queue[0];
-                        if (!dispatch(lane, job, lane.waveSlots > 0)) break;
-                        queue.shift(); cursor = (index + 1) % lanes.length;
+                        if (!dispatch(lane, job)) break;
+                        queue.shift(); lane.waveSlots -= 1;
+                        if (queue === retries) lane.retrySlots -= 1;
+                        dispatched += 1; cursor = (index + 1) % lanes.length;
                     }
+                    if (openedWave && dispatched === 0 && lane.pendingCommits === 0) {
+                        lane.waveSlots = 0; lane.retrySlots = 0; activeSendingLane = null;
+                    } else releaseActiveWaveIfDone(lane);
+                    if (dispatched > 0) break;
                 }
             }
             emit();

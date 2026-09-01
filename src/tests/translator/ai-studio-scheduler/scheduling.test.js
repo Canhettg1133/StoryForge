@@ -29,7 +29,7 @@ describe('Independent key waves', () => {
         r = runtime({parallel:2,rpm:1,count:4}); r.enqueueMany(12); await r.advance(30000);
         expect(r.counts()).toEqual([1,1,1,1]);
     });
-    it('restaggers key lanes when their cooldowns expire together', async () => {
+    it('uses the global wave lock when key cooldowns expire together', async () => {
         r = runtime({parallel:60,rpm:15,count:4}); r.enqueueMany(60); await r.advance(30000);
         expect(r.counts()).toEqual([15,15,15,15]);
 
@@ -42,10 +42,10 @@ describe('Independent key waves', () => {
                 lease.commit();
                 retrySends.push({ keyIndex: lease.pair.keyIndex, at: r.now });
             },
-        }));
+        }).catch(error => error));
         r.scheduler.wake(); await flush();
 
-        expect(r.scheduler.snapshot().keys.map(key => Math.ceil(key.waitMs / 1000))).toEqual([70,80,90,100]);
+        expect(r.scheduler.snapshot().keys.map(key => Math.ceil(key.waitMs / 1000))).toEqual([70,70,70,70]);
         await r.resumeAfter(100000); expect(retrySends.map(send => send.at)).toEqual(Array(15).fill(230000));
         await r.advance(10000); expect(retrySends.map(send => send.at)).toEqual([
             ...Array(15).fill(230000), ...Array(15).fill(240000),
@@ -55,6 +55,43 @@ describe('Independent key waves', () => {
             ...Array(15).fill(250000), ...Array(15).fill(260000),
         ]);
         await Promise.all(jobs);
+    });
+    it('never leaves a healthy key stuck at a moving ten-second deadline', async () => {
+        r = runtime({parallel:3,rpm:15,count:3}); r.enqueueMany(3); await r.advance(20000);
+        await r.advance(65000);
+        vm.runInContext("for (let count = 0; count < 15; count += 1) recordTranslatorRpmRequest('gemini_direct', 1)", r.context);
+        vm.runInContext("recordModelKeyError('test-model', 1, 1); recordModelKeyError('test-model', 2, 1)", r.context);
+        r.scheduler.wake(); await flush();
+        await r.advance(1000);
+
+        const firstWait = r.scheduler.snapshot().keys[2].waitMs;
+        await r.advance(5000);
+        const secondWait = r.scheduler.snapshot().keys[2].waitMs;
+
+        expect(secondWait).toBeLessThanOrEqual(Math.max(0, firstWait - 5000));
+    });
+    it('releases an RPM-ready key without colliding with the key that recovers later', async () => {
+        r = runtime({parallel:3,rpm:15,count:3}); r.enqueueMany(3); await r.advance(85000);
+        vm.runInContext("for (let count = 0; count < 15; count += 1) recordTranslatorRpmRequest('gemini_direct', 1)", r.context);
+        vm.runInContext("recordModelKeyError('test-model', 0, 100); recordModelKeyError('test-model', 1, 1); recordModelKeyError('test-model', 2, 1)", r.context);
+        r.enqueueMany(3); await flush();
+
+        await r.advance(1000);
+        expect(r.requests.slice(3).map(request => ({ keyIndex: request.keyIndex, at: request.at })))
+            .toEqual([{ keyIndex: 2, at: 186000 }]);
+        await r.advance(64000);
+        expect(r.requests.slice(3).map(request => ({ keyIndex: request.keyIndex, at: request.at }))).toEqual([
+            { keyIndex: 2, at: 186000 }, { keyIndex: 1, at: 250000 },
+        ]);
+        await r.advance(9999); expect(r.requests).toHaveLength(5);
+        await r.advance(1);
+
+        const later = r.requests.slice(3);
+        expect(later.map(request => ({ keyIndex: request.keyIndex, at: request.at }))).toEqual([
+            { keyIndex: 2, at: 186000 }, { keyIndex: 1, at: 250000 }, { keyIndex: 2, at: 260000 },
+        ]);
+        expect(later[2].at - later[1].at).toBeGreaterThanOrEqual(10000);
+        expect(later[2].at - later[0].at).toBeGreaterThanOrEqual(65000);
     });
     it('keeps later waves ten seconds apart when one cooldown collides with the next key', async () => {
         r = runtime({parallel:4,rpm:1,count:4}); r.enqueueMany(8); await r.advance(30000);
@@ -107,6 +144,44 @@ describe('Independent key waves', () => {
             { keyIndex: 0, at: 175000 }, { keyIndex: 1, at: 185000 },
         ]);
         await Promise.all([first, second]);
+    });
+    it('starts another key ten seconds after the final real send in the prior key wave', async () => {
+        r = runtime({parallel:4,rpm:2,count:2});
+        let releaseDelayedSend;
+        const waitForSend = new Promise(resolve => { releaseDelayedSend = resolve; });
+        const sends = [];
+        const jobs = [
+            r.scheduler.enqueue({ kind: 'main', run: async lease => {
+                await waitForSend;
+                lease.commit();
+                sends.push({ keyIndex: lease.pair.keyIndex, at: r.now });
+            }}),
+            r.scheduler.enqueue({ kind: 'main', run: async lease => {
+                lease.commit();
+                sends.push({ keyIndex: lease.pair.keyIndex, at: r.now });
+            }}),
+            r.scheduler.enqueue({ kind: 'main', run: async lease => {
+                lease.commit();
+                sends.push({ keyIndex: lease.pair.keyIndex, at: r.now });
+            }}),
+        ].map(job => job.catch(error => error));
+        await flush();
+        expect(sends).toEqual([{ keyIndex: 0, at: 100000 }]);
+
+        await r.advance(20000);
+        expect(sends).toHaveLength(1);
+        expect(r.scheduler.snapshot().keys[1]).toMatchObject({reason:'previous-wave',waitMs:0});
+        releaseDelayedSend(); await flush();
+        expect(sends).toEqual([
+            { keyIndex: 0, at: 100000 }, { keyIndex: 0, at: 120000 },
+        ]);
+        await r.advance(9999); expect(sends).toHaveLength(2);
+        await r.advance(1);
+        expect(sends).toEqual([
+            { keyIndex: 0, at: 100000 }, { keyIndex: 0, at: 120000 },
+            { keyIndex: 1, at: 130000 },
+        ]);
+        await Promise.all(jobs);
     });
     it('starts the next key wave 65 seconds after the final real send in its prior wave', async () => {
         r = runtime({parallel:2,rpm:2,count:1});
