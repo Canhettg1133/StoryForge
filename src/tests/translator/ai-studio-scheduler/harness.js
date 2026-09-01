@@ -61,6 +61,12 @@ export function runtime({ parallel = 45, rpm = 15, count = 3 } = {}) {
             }
             now = target; await flush();
         },
+        async resumeAfter(ms) {
+            await flush(); now += ms;
+            const due = [...timers].filter(([, timer]) => timer.at <= now);
+            due.forEach(([id, timer]) => { timers.delete(id); timer.callback(); });
+            await flush();
+        },
         async close() { scheduler.cancel(); await Promise.all(jobs); await flush(); scheduler.dispose(); },
     };
 }

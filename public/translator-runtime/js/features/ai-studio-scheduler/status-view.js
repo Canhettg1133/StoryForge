@@ -3,7 +3,7 @@
     let lastPaint = -Infinity;
     let lastSignature = '';
     const labels = { ready: 'Sẵn sàng', wave: 'Chờ đợt mới', rpm: 'Hết RPM', cooldown: 'Cooldown',
-        stagger: 'Chờ mở key', paused: 'Tạm dừng', disabled: 'Key không khả dụng' };
+        stagger: 'Chờ mở key', restagger: 'Chờ tách nhịp', paused: 'Tạm dừng', disabled: 'Key không khả dụng' };
     ns.renderStatus = state => {
         const panel = document.getElementById('aiStudioKeyStatus');
         if (!panel) return;
