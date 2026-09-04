@@ -160,6 +160,39 @@
   margin: var(--space-4) 0;
 }
 
+.settings-key-grid > .key-section {
+  margin-bottom: 0;
+}
+
+.settings-key-categories {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.settings-key-category + .settings-key-category {
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-border);
+}
+
+.settings-key-category__header {
+  margin-bottom: var(--space-4);
+}
+
+.settings-key-category__header h3 {
+  margin: 0 0 4px;
+  color: var(--color-text-primary);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+}
+
+.settings-key-category__header p {
+  margin: 0;
+  max-width: 72ch;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
 .cloudflare-workers-ai-provider-config {
   display: grid;
   gap: 12px;
@@ -735,6 +768,24 @@
 .settings-provider-grid .settings-radio-card.compact {
   min-height: 82px;
 }
+
+.settings-provider-config-panel {
+  display: grid;
+  gap: var(--space-5);
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.settings-provider-config-panel > .key-section,
+.settings-provider-config-panel > .model-default-block,
+.settings-provider-config-panel > .gemini-direct-model-manager {
+  margin: 0;
+}
+
+.settings-provider-config-panel > .settings-provider-setup-banner {
+  margin-bottom: 0;
+}
 .settings-radio-card:hover { border-color: var(--color-border-strong); background: var(--color-bg-hover); }
 .settings-radio-card--active { border-color: var(--color-accent); background: var(--color-accent-muted); color: var(--color-text-primary); }
 .settings-radio-card--active svg { color: var(--color-accent); }
@@ -798,12 +849,63 @@
   margin: var(--space-4) 0;
 }
 
-.model-default-block__eyebrow {
-  font-size: var(--text-xs);
+.model-default-block__heading {
+  margin: 0;
+  font-size: var(--text-sm);
   font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-primary);
+}
+
+.gemini-direct-model-manager {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.gemini-direct-model-manager .model-default-block {
+  margin: 0;
+}
+
+.gemini-direct-model-manager .settings-action-row--spaced {
+  align-items: center;
+  margin-top: 0;
+}
+
+.gemini-direct-model-count {
+  margin: 0;
+}
+
+.gemini-direct-manual-model,
+.gemini-direct-connection {
+  margin: 0;
+}
+
+.gemini-direct-connection {
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.settings-inline-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-tertiary);
+}
+
+.settings-inline-summary span {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.settings-inline-summary strong {
+  min-width: 0;
+  margin-right: auto;
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
 }
 
 .settings-select-callout__copy {
@@ -1538,6 +1640,16 @@
 
   .settings-radio-card {
     border-radius: 8px;
+  }
+
+  .settings-inline-summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-inline-summary .btn {
+    width: 100%;
+    justify-content: center;
   }
 
   .settings-select-shell {

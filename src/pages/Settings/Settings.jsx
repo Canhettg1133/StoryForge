@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import keyManager from '../../services/ai/keyManager';
 import modelRouter, {
   AI_STUDIO_RELAY_MODELS,
   PROVIDERS,
-  DIRECT_MODELS,
   PROXY_MODEL_PRESETS,
 } from '../../services/ai/router';
 import aiService, {
@@ -53,7 +52,7 @@ import {
 } from '../../services/projectCovers/coverImageProvider';
 import {
   Key, Server, Cpu, Cloud, Trash2, Eye, EyeOff, CheckCircle, XCircle,
-  Zap, Gauge, Crown, RefreshCw, TestTube, Download, Upload, Copy, Check,
+  Gauge, RefreshCw, TestTube, Download, Upload, Copy, Check,
   Plus, X, BookOpen, ExternalLink, ArrowLeft, ChevronsUpDown, Sparkles,
   Palette,
 } from 'lucide-react';
@@ -71,9 +70,17 @@ import './Settings.css';
 import ChapterCompletionModelSetting from './ChapterCompletionModelSetting.jsx';
 import ManuscriptReviewModelSetting from '../../features/manuscriptReview/ManuscriptReviewModelSetting.jsx';
 import SetupGuideButtons from '../../features/setupGuides/SetupGuideButtons.jsx';
+import GeminiDirectModelManager from './GeminiDirectModelManager.jsx';
 
 // ─── Reusable Key Section Component ───
-function KeySection({
+function maskSettingsKey(value) {
+  const key = String(value || '');
+  if (key.length <= 8) return `${key.slice(0, 2)}••••••`;
+  if (key.length <= 14) return `${key.slice(0, 4)}••••••${key.slice(-2)}`;
+  return `${key.slice(0, 10)}•••••••${key.slice(-4)}`;
+}
+
+export function KeySection({
   provider,
   providerLabel,
   description = '',
@@ -89,11 +96,18 @@ function KeySection({
   const [copied, setCopied] = useState(false);
   const [singleKey, setSingleKey] = useState('');
   const [feedback, setFeedback] = useState(null); // { type: 'success'|'error'|'warn', text }
+  const feedbackTimerRef = useRef(null);
+  const copiedTimerRef = useRef(null);
 
   useEffect(() => {
     setKeys([...keyManager.getKeys(provider)]);
     setShowKeys({});
   }, [provider, refreshToken]);
+
+  useEffect(() => () => {
+    if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current);
+    if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+  }, []);
 
   const refresh = () => {
     const nextKeys = [...keyManager.getKeys(provider)];
@@ -104,7 +118,8 @@ function KeySection({
 
   const showFeedback = (type, text) => {
     setFeedback({ type, text });
-    setTimeout(() => setFeedback(null), 4000);
+    if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current);
+    feedbackTimerRef.current = window.setTimeout(() => setFeedback(null), 4000);
   };
 
   const parseKeysFromText = (value) => String(value || '')
@@ -187,10 +202,15 @@ function KeySection({
     setBulkMode(true);
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(keyManager.exportKeys(provider));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(keyManager.exportKeys(provider));
+      setCopied(true);
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      showFeedback('error', 'Không thể sao chép key. Hãy thử lại hoặc dùng Xuất.');
+    }
   };
 
   const handleRemove = (index) => {
@@ -212,7 +232,11 @@ function KeySection({
 
       {/* Feedback message */}
       {feedback && (
-        <div className={`key-feedback key-feedback--${feedback.type}`}>
+        <div
+          className={`key-feedback key-feedback--${feedback.type}`}
+          role={feedback.type === 'error' ? 'alert' : 'status'}
+          aria-live={feedback.type === 'error' ? 'assertive' : 'polite'}
+        >
           {feedback.type === 'success' && <CheckCircle size={13} />}
           {feedback.type === 'error' && <XCircle size={13} />}
           {feedback.type === 'warn' && <XCircle size={13} />}
@@ -228,9 +252,12 @@ function KeySection({
           value={singleKey}
           onChange={(e) => setSingleKey(e.target.value)}
           onKeyDown={handleSingleKeyDown}
+          aria-label={`API key cho ${providerLabel}`}
+          autoComplete="off"
+          spellCheck={false}
           style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}
         />
-        <button className="btn btn-primary btn-sm" onClick={handleAddSingle} disabled={!singleKey.trim()}>
+        <button type="button" className="btn btn-primary btn-sm" onClick={handleAddSingle} disabled={!singleKey.trim()}>
           <Plus size={14} /> Thêm
         </button>
       </div>
@@ -239,19 +266,20 @@ function KeySection({
       <div className="key-toolbar">
         <button
           className="btn btn-secondary btn-sm"
+          type="button"
           onClick={() => setBulkMode((prev) => !prev)}
         >
           {bulkMode ? <><X size={12} /> Đóng nhập nhiều</> : <><Upload size={12} /> Nhập nhiều</>}
         </button>
         {bulkMode ? (
-          <button className="btn btn-secondary btn-sm key-clear-bulk" onClick={() => setBulkText('')} disabled={!bulkText.trim()}>
+          <button type="button" className="btn btn-secondary btn-sm key-clear-bulk" onClick={() => setBulkText('')} disabled={!bulkText.trim()}>
             <X size={12} /> Xóa ô nhập nhiều
           </button>
         ) : null}
-        <button className="btn btn-ghost btn-sm" onClick={handleExport} disabled={keys.length === 0}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={handleExport} disabled={keys.length === 0}>
           <Download size={12} /> Xuất
         </button>
-        <button className="btn btn-ghost btn-sm" onClick={handleCopy} disabled={keys.length === 0}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={handleCopy} disabled={keys.length === 0}>
           {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? 'Đã copy' : 'Copy'}
         </button>
       </div>
@@ -264,12 +292,13 @@ function KeySection({
             placeholder={`Dán danh sách API keys cho ${providerLabel}, mỗi key 1 dòng...\n(Keys trùng sẽ tự động bỏ qua)`}
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}
+            aria-label={`Danh sách API key cho ${providerLabel}`}
             rows={5}
             style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}
           />
           <div className="bulk-import-footer">
             <span className="bulk-import-info">{detectedCount} keys phát hiện (trùng sẽ bỏ qua)</span>
-            <button className="btn btn-primary btn-sm" onClick={handleBulkImport} disabled={detectedCount === 0}>
+            <button type="button" className="btn btn-primary btn-sm" onClick={handleBulkImport} disabled={detectedCount === 0}>
               <Upload size={12} /> Thêm {detectedCount} keys
             </button>
           </div>
@@ -280,15 +309,25 @@ function KeySection({
       {keys.length > 0 && (
         <div className="key-list">
           {keys.map((k, i) => (
-            <div key={i} className="key-item">
+            <div key={`api-key-${i}`} className="key-item">
               <span className="key-index">{i + 1}</span>
               <code className="key-value">
-                {showKeys[i] ? k.key : k.key.slice(0, 10) + '•••••••' + k.key.slice(-4)}
+                {showKeys[i] ? k.key : maskSettingsKey(k.key)}
               </code>
-              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowKeys(p => ({ ...p, [i]: !p[i] }))}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon btn-sm"
+                onClick={() => setShowKeys(p => ({ ...p, [i]: !p[i] }))}
+                aria-label={`${showKeys[i] ? 'Ẩn' : 'Hiện'} API key số ${i + 1}`}
+              >
                 {showKeys[i] ? <EyeOff size={13} /> : <Eye size={13} />}
               </button>
-              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => handleRemove(i)}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon btn-sm"
+                onClick={() => handleRemove(i)}
+                aria-label={`Xóa API key số ${i + 1}`}
+              >
                 <Trash2 size={13} />
               </button>
             </div>
@@ -463,7 +502,11 @@ function CloudflareWorkersAIModelSettingsPanel() {
       </div>
 
       {modelStatus ? (
-        <div className={`settings-test-result ${modelStatus.type}`}>
+        <div
+          className={`settings-test-result ${modelStatus.type}`}
+          role={modelStatus.type === 'error' ? 'alert' : 'status'}
+          aria-live="polite"
+        >
           {modelStatus.type === 'success' ? <CheckCircle size={14} /> : <XCircle size={14} />}
           {modelStatus.text}
         </div>
@@ -513,46 +556,6 @@ function CloudflareWorkersAIAccountSettingsFields() {
         />
         <p className="settings-hint">Dùng Account ID trong Workers AI REST API, không phải email tài khoản.</p>
       </div>
-    </div>
-  );
-}
-
-// ─── Model Manager (Gemini Direct) ───
-function DirectModelManager({ onModelsChange }) {
-  const [activeModels, setActiveModels] = useState(modelRouter.getActiveDirectModels());
-
-  const allModels = DIRECT_MODELS;
-  const isActive = (id) => activeModels.some(m => m.id === id);
-
-  const toggle = (model) => {
-    let next;
-    if (isActive(model.id)) {
-      next = activeModels.filter(m => m.id !== model.id);
-    } else {
-      next = [...activeModels, { id: model.id, rpm: model.rpm }];
-    }
-    setActiveModels(next);
-    modelRouter.setActiveDirectModels(next);
-    onModelsChange?.();
-  };
-
-  return (
-    <div className="model-manager">
-      <label className="form-label">Model Gemini Direct</label>
-      <div className="model-list">
-        {allModels.map(m => (
-          <div key={m.id} className={`model-item ${isActive(m.id) ? 'model-item--active' : ''}`} onClick={() => toggle(m)}>
-            <span className={`model-status ${isActive(m.id) ? 'model-status--on' : ''}`}>
-              {isActive(m.id) ? '✅' : '⬜'}
-            </span>
-            <div className="model-info">
-              <span className="model-name">{m.label}</span>
-              <span className="model-meta">{m.rpm} RPM · {m.rpd} RPD</span>
-            </div>
-          </div>
-        ))}
-      </div>
-      <p className="settings-hint">3.1 Flash Lite có quota cao nhất (15 RPM, 500 RPD), phù hợp khi cần xử lý nhanh.</p>
     </div>
   );
 }
@@ -633,7 +636,7 @@ function ModelDefaultCallout({
 
   return (
     <div className="model-default-block">
-      <div className="model-default-block__eyebrow">{eyebrow}</div>
+      <h3 className="model-default-block__heading">{eyebrow}</h3>
       <div className="settings-select-callout">
         <div className="settings-select-callout__copy">
           <div className="settings-select-callout__title">
@@ -941,7 +944,7 @@ export default function Settings() {
   const [showCustomProxyAdvanced, setShowCustomProxyAdvanced] = useState(false);
   const [showCustomProxySetup, setShowCustomProxySetup] = useState(false);
   const [keyCounts, setKeyCounts] = useState(readSettingsKeyCounts);
-  const [customProxyKeysRevision, setCustomProxyKeysRevision] = useState(0);
+  const [keyRevisions, setKeyRevisions] = useState({});
   const [directUrl, setDirectUrl] = useState(getGeminiDirectBaseUrl());
   const [ollamaUrl, setOllamaUrl] = useState(getOllamaUrl());
   const [aiStudioRelayUrl, setAIStudioRelayUrl] = useState(getAIStudioRelayUrl());
@@ -965,11 +968,10 @@ export default function Settings() {
   const [ollamaModels, setOllamaModels] = useState([]);
   const [testResults, setTestResults] = useState({});
   const [testing, setTesting] = useState({});
-  const [quality, setQuality] = useState(modelRouter.getQualityMode());
   const [proxyModel, setProxyModel] = useState(modelRouter.getProxyModel());
   const [provider, setProvider] = useState(modelRouter.getPreferredProvider());
   const [selectedProviderCardOverride, setSelectedProviderCardOverride] = useState('');
-  const [, setDirectModelCatalogRevision] = useState(0);
+  const [directModelCatalogRevision, setDirectModelCatalogRevision] = useState(0);
   const selectedProxyPreset = PROXY_MODEL_PRESETS.find((model) => model.id === proxyModel)
     || (proxyModel ? { id: proxyModel, label: proxyModel } : PROXY_MODEL_PRESETS[1] || PROXY_MODEL_PRESETS[0]);
   const chatProviderCard = provider === PROVIDERS.OPENAI_PROXY
@@ -1012,6 +1014,7 @@ export default function Settings() {
   );
   const customProxyKeyCount = keyCounts.customProxy;
   const geminiDirectKeyCount = keyCounts.geminiDirect;
+  const getKeyRevision = (providerKey) => keyRevisions[providerKey] || 0;
   const aiStudioConnectorConnected = Boolean(aiStudioRelayStatus?.connectorConnected);
   const aiStudioClientConnected = Boolean(aiStudioRelayStatus?.clientConnected);
   const aiStudioRelayExpired = Boolean(aiStudioRelayStatus?.expired);
@@ -1242,9 +1245,10 @@ export default function Settings() {
   };
   const handleKeysChange = (changedProvider) => {
     setKeyCounts(readSettingsKeyCounts());
-    if (changedProvider === PROVIDERS.OPENAI_PROXY) {
-      setCustomProxyKeysRevision((revision) => revision + 1);
-    }
+    setKeyRevisions((revisions) => ({
+      ...revisions,
+      [changedProvider]: (revisions[changedProvider] || 0) + 1,
+    }));
   };
 
   const handleCustomProxyPresetActivated = ({ profile: activatedProfile }) => {
@@ -1255,7 +1259,10 @@ export default function Settings() {
     setProvider(PROVIDERS.OPENAI_PROXY);
     modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
     setKeyCounts(readSettingsKeyCounts());
-    setCustomProxyKeysRevision((revision) => revision + 1);
+    setKeyRevisions((revisions) => ({
+      ...revisions,
+      [PROVIDERS.OPENAI_PROXY]: (revisions[PROVIDERS.OPENAI_PROXY] || 0) + 1,
+    }));
     setProxyModelFetchStatus({
       type: 'success',
       text: 'Đã chuyển URL, model và API key sang bộ đã chọn.',
@@ -1410,6 +1417,12 @@ export default function Settings() {
     if (prov === PROVIDERS.OLLAMA) {
       handleSaveOllamaSettings();
     }
+    if (prov === PROVIDERS.GEMINI_DIRECT) {
+      const normalizedUrl = directUrl.trim().replace(/\/+$/u, '')
+        || 'https://generativelanguage.googleapis.com';
+      setDirectUrl(normalizedUrl);
+      saveSettings({ geminiDirectUrl: normalizedUrl });
+    }
     if (prov === PROVIDERS.AI_STUDIO_RELAY) {
       handleSaveAIStudioRelay();
     }
@@ -1490,7 +1503,7 @@ export default function Settings() {
         </section>
 
         {/* === PROVIDER PREFERENCE === */}
-        <section className="settings-section card animate-slide-up" style={{ animationDelay: '30ms' }}>
+        <section className="settings-section card animate-slide-up" id="provider-settings" style={{ animationDelay: '30ms' }}>
           <div className="settings-section-header">
             <Gauge size={20} />
             <div>
@@ -1528,7 +1541,15 @@ export default function Settings() {
           </div>
 
           {selectedProviderCard === PROVIDER_CARD_AG_PROXY ? (
-            <div className="form-group" style={{ marginTop: 'var(--space-4)' }}>
+            <div className="settings-provider-config-panel">
+              <KeySection
+                provider="gemini_proxy"
+                providerLabel="Gemini Proxy mặc định (ag)"
+                description="Thêm, xóa hoặc nhập nhiều key ngay tại provider đang dùng."
+                icon={Server}
+                onKeysChange={handleKeysChange}
+                refreshToken={getKeyRevision('gemini_proxy')}
+              />
               <ModelDefaultCallout
                 eyebrow="Model AG Proxy"
                 value={selectedProxyPreset?.label || 'Chưa chọn model'}
@@ -1566,13 +1587,21 @@ export default function Settings() {
                 profileLabel="AG Proxy"
               />
               {proxyModelFetchStatus ? (
-                <div className={`settings-test-result ${proxyModelFetchStatus.type === 'success' ? 'success' : proxyModelFetchStatus.type === 'pending' ? 'pending' : 'error'}`}>
+                <div
+                  className={`settings-test-result ${proxyModelFetchStatus.type === 'success' ? 'success' : proxyModelFetchStatus.type === 'pending' ? 'pending' : 'error'}`}
+                  role={proxyModelFetchStatus.type === 'error' ? 'alert' : 'status'}
+                  aria-live="polite"
+                >
                   {proxyModelFetchStatus.type === 'success' ? <CheckCircle size={14} /> : proxyModelFetchStatus.type === 'pending' ? <RefreshCw size={14} className="animate-spin" /> : <XCircle size={14} />}
                   {proxyModelFetchStatus.text}
                 </div>
               ) : null}
               {testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)] ? (
-                <div className={`settings-test-result ${testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}>
+                <div
+                  className={`settings-test-result ${testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}
+                  role={testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].success ? 'status' : 'alert'}
+                  aria-live="polite"
+                >
                   {testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].success
                     ? <><CheckCircle size={14} /> Kết nối OK</>
                     : <><XCircle size={14} /> {testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].error}</>}
@@ -1582,7 +1611,15 @@ export default function Settings() {
           ) : null}
 
           {selectedProviderCard === PROVIDER_CARD_CUSTOM_PROXY ? (
-            <div className="form-group" style={{ marginTop: 'var(--space-4)' }}>
+            <div className="settings-provider-config-panel">
+              <KeySection
+                provider={PROVIDERS.OPENAI_PROXY}
+                providerLabel="Custom OpenAI-compatible"
+                description="Key riêng cho Base URL custom; không dùng chung với Gemini Proxy mặc định."
+                icon={Server}
+                onKeysChange={handleKeysChange}
+                refreshToken={getKeyRevision(PROVIDERS.OPENAI_PROXY)}
+              />
               <div className="settings-provider-setup-banner">
                 <div>
                   <strong>Cấu hình Custom Proxy</strong>
@@ -1644,13 +1681,21 @@ export default function Settings() {
               </div>
 
               {proxyModelFetchStatus ? (
-                <div className={`settings-test-result ${proxyModelFetchStatus.type === 'success' ? 'success' : proxyModelFetchStatus.type === 'pending' ? 'pending' : 'error'}`}>
+                <div
+                  className={`settings-test-result ${proxyModelFetchStatus.type === 'success' ? 'success' : proxyModelFetchStatus.type === 'pending' ? 'pending' : 'error'}`}
+                  role={proxyModelFetchStatus.type === 'error' ? 'alert' : 'status'}
+                  aria-live="polite"
+                >
                   {proxyModelFetchStatus.type === 'success' ? <CheckCircle size={14} /> : proxyModelFetchStatus.type === 'pending' ? <RefreshCw size={14} className="animate-spin" /> : <XCircle size={14} />}
                   {proxyModelFetchStatus.text}
                 </div>
               ) : null}
               {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? (
-                <div className={`settings-test-result ${testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}>
+                <div
+                  className={`settings-test-result ${testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}
+                  role={testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success ? 'status' : 'alert'}
+                  aria-live="polite"
+                >
                   {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success
                     ? <><CheckCircle size={14} /> Kết nối OK</>
                     : <><XCircle size={14} /> {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].error}</>}
@@ -1664,23 +1709,58 @@ export default function Settings() {
           ) : null}
 
           {selectedProviderCard === PROVIDERS.GEMINI_DIRECT ? (
-            <div className="form-group" style={{ marginTop: 'var(--space-4)' }}>
-              <label className="form-label">Chế độ chất lượng</label>
-              <div className="settings-radio-group horizontal">
-                {[
-                  { value: 'fast', icon: Zap, label: 'Nhanh' },
-                  { value: 'balanced', icon: Gauge, label: 'Cân bằng' },
-                  { value: 'best', icon: Crown, label: 'Tốt nhất' },
-                ].map(q => (
+            <div className="settings-provider-config-panel" data-catalog-revision={directModelCatalogRevision}>
+              <KeySection
+                provider={PROVIDERS.GEMINI_DIRECT}
+                providerLabel="Gemini Direct (AI Studio)"
+                description="Dùng API key Google AI Studio để lấy model và viết truyện trực tiếp."
+                icon={Cloud}
+                onKeysChange={handleKeysChange}
+                refreshToken={getKeyRevision(PROVIDERS.GEMINI_DIRECT)}
+              />
+
+              <GeminiDirectModelManager
+                baseUrl={directUrl}
+                keyRevision={getKeyRevision(PROVIDERS.GEMINI_DIRECT)}
+                onCatalogChange={() => setDirectModelCatalogRevision((value) => value + 1)}
+              />
+
+              <div className="form-group gemini-direct-connection">
+                <label className="form-label" htmlFor="gemini-direct-provider-url">Địa chỉ Google Gemini API</label>
+                <div className="settings-input-row">
+                  <input
+                    id="gemini-direct-provider-url"
+                    className="input"
+                    value={directUrl}
+                    onChange={(event) => setDirectUrl(event.target.value)}
+                    placeholder="https://generativelanguage.googleapis.com"
+                    spellCheck={false}
+                  />
+                  <button type="button" className="btn btn-secondary" onClick={handleSaveUrls}>Lưu</button>
                   <button
-                    key={q.value}
-                    className={`settings-radio-card compact ${quality === q.value ? 'settings-radio-card--active' : ''}`}
-                    onClick={() => { setQuality(q.value); modelRouter.setQualityMode(q.value); }}
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => handleTest(PROVIDERS.GEMINI_DIRECT)}
+                    disabled={testing[PROVIDERS.GEMINI_DIRECT] || geminiDirectKeyCount === 0}
                   >
-                    <q.icon size={16} />
-                    <span className="settings-radio-label">{q.label}</span>
+                    {testing[PROVIDERS.GEMINI_DIRECT]
+                      ? <RefreshCw size={14} className="animate-spin" />
+                      : <TestTube size={14} />}
+                    Test
                   </button>
-                ))}
+                </div>
+                <p className="settings-hint">API key chỉ được gửi trong header khi lấy danh sách model.</p>
+                {testResults[PROVIDERS.GEMINI_DIRECT] ? (
+                  <div
+                    className={`settings-test-result ${testResults[PROVIDERS.GEMINI_DIRECT].success ? 'success' : 'error'}`}
+                    role={testResults[PROVIDERS.GEMINI_DIRECT].success ? 'status' : 'alert'}
+                    aria-live="polite"
+                  >
+                    {testResults[PROVIDERS.GEMINI_DIRECT].success
+                      ? <><CheckCircle size={14} /> Kết nối OK</>
+                      : <><XCircle size={14} /> {testResults[PROVIDERS.GEMINI_DIRECT].error}</>}
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -1743,38 +1823,58 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="settings-key-grid">
-            <KeySection
-              provider="gemini_proxy"
-              providerLabel="Gemini Proxy mặc định (ag)"
-              description="Dùng cho preset Gemini Proxy qua StoryForge relay."
-              icon={Server}
-              onKeysChange={handleKeysChange}
-            />
-            <KeySection
-              provider={PROVIDERS.OPENAI_PROXY}
-              providerLabel="Custom OpenAI-compatible"
-              description="Dùng riêng cho web/proxy custom. Không dùng chung với Gemini Proxy mặc định ag."
-              icon={Server}
-              onKeysChange={handleKeysChange}
-              refreshToken={customProxyKeysRevision}
-            />
-            <KeySection
-              provider={PROVIDERS.GEMINI_DIRECT}
-              providerLabel="Gemini Direct (AI Studio)"
-              description="Dùng cho API key từ Google AI Studio."
-              icon={Cloud}
-              onKeysChange={handleKeysChange}
-            />
-            <KeySection
-              provider={PROVIDERS.CLOUDFLARE_WORKERS_AI}
-              providerLabel="Cloudflare Workers AI"
-              description="Dùng cho tạo bìa truyện qua Workers AI REST API. Cần Account ID và API token có quyền Workers AI."
-              icon={Cloud}
-              onKeysChange={handleKeysChange}
-            >
-              <CloudflareWorkersAIAccountSettingsFields />
-            </KeySection>
+          <div className="settings-key-categories">
+            <section className="settings-key-category" aria-labelledby="text-ai-keys-title">
+              <div className="settings-key-category__header">
+                <h3 id="text-ai-keys-title">AI văn bản</h3>
+                <p>Ba kho key độc lập dùng cho viết, hoàn thành chương và phân tích bản thảo.</p>
+              </div>
+              <div className="settings-key-grid">
+                <KeySection
+                  provider="gemini_proxy"
+                  providerLabel="Gemini Proxy mặc định (ag)"
+                  description="Dùng cho preset Gemini Proxy qua StoryForge relay."
+                  icon={Server}
+                  onKeysChange={handleKeysChange}
+                  refreshToken={getKeyRevision('gemini_proxy')}
+                />
+                <KeySection
+                  provider={PROVIDERS.OPENAI_PROXY}
+                  providerLabel="Custom OpenAI-compatible"
+                  description="Dùng riêng cho web/proxy custom. Không dùng chung với Gemini Proxy mặc định ag."
+                  icon={Server}
+                  onKeysChange={handleKeysChange}
+                  refreshToken={getKeyRevision(PROVIDERS.OPENAI_PROXY)}
+                />
+                <KeySection
+                  provider={PROVIDERS.GEMINI_DIRECT}
+                  providerLabel="Gemini Direct (AI Studio)"
+                  description="Dùng cho API key từ Google AI Studio."
+                  icon={Cloud}
+                  onKeysChange={handleKeysChange}
+                  refreshToken={getKeyRevision(PROVIDERS.GEMINI_DIRECT)}
+                />
+              </div>
+            </section>
+
+            <section className="settings-key-category" aria-labelledby="cover-ai-keys-title">
+              <div className="settings-key-category__header">
+                <h3 id="cover-ai-keys-title">Tạo bìa</h3>
+                <p>Thông tin riêng cho tác vụ tạo ảnh; không tham gia vào luồng viết truyện.</p>
+              </div>
+              <div className="settings-key-grid">
+                <KeySection
+                  provider={PROVIDERS.CLOUDFLARE_WORKERS_AI}
+                  providerLabel="Cloudflare Workers AI"
+                  description="Dùng cho tạo bìa truyện qua Workers AI REST API. Cần Account ID và API token có quyền Workers AI."
+                  icon={Cloud}
+                  onKeysChange={handleKeysChange}
+                  refreshToken={getKeyRevision(PROVIDERS.CLOUDFLARE_WORKERS_AI)}
+                >
+                  <CloudflareWorkersAIAccountSettingsFields />
+                </KeySection>
+              </div>
+            </section>
           </div>
         </section>
 
@@ -1889,21 +1989,31 @@ export default function Settings() {
           </div>
 
           <div className="form-group">
+            <label className="form-label" htmlFor="gemini-direct-url">Địa chỉ Google Gemini API</label>
             <div className="settings-input-row">
               <input
+                id="gemini-direct-url"
                 className="input"
                 value={directUrl}
                 onChange={(e) => setDirectUrl(e.target.value)}
                 placeholder="https://generativelanguage.googleapis.com"
               />
               <button className="btn btn-secondary" onClick={handleSaveUrls}>Lưu</button>
-              <button className="btn btn-ghost btn-icon" onClick={() => handleTest(PROVIDERS.GEMINI_DIRECT)}
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon"
+                onClick={() => handleTest(PROVIDERS.GEMINI_DIRECT)}
+                aria-label="Test kết nối Gemini Direct"
                 disabled={testing[PROVIDERS.GEMINI_DIRECT] || geminiDirectKeyCount === 0}>
                 {testing[PROVIDERS.GEMINI_DIRECT] ? <RefreshCw size={16} className="animate-spin" /> : <TestTube size={16} />}
               </button>
             </div>
             {testResults[PROVIDERS.GEMINI_DIRECT] && (
-              <div className={`settings-test-result ${testResults[PROVIDERS.GEMINI_DIRECT].success ? 'success' : 'error'}`}>
+              <div
+                className={`settings-test-result ${testResults[PROVIDERS.GEMINI_DIRECT].success ? 'success' : 'error'}`}
+                role={testResults[PROVIDERS.GEMINI_DIRECT].success ? 'status' : 'alert'}
+                aria-live="polite"
+              >
                 {testResults[PROVIDERS.GEMINI_DIRECT].success
                   ? <><CheckCircle size={14} /> Kết nối OK</>
                   : <><XCircle size={14} /> {testResults[PROVIDERS.GEMINI_DIRECT].error}</>}
@@ -1911,7 +2021,20 @@ export default function Settings() {
             )}
           </div>
 
-          <DirectModelManager onModelsChange={() => setDirectModelCatalogRevision((value) => value + 1)} />
+          <div className="settings-inline-summary" role="status">
+            <span>Model đang dùng</span>
+            <strong>{modelRouter.getDirectModel()}</strong>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                handleProviderSelect(PROVIDERS.GEMINI_DIRECT);
+                document.getElementById('provider-settings')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+            >
+              Chọn model ở trên
+            </button>
+          </div>
         </section>
 
         {/* === AI STUDIO RELAY === */}
@@ -2149,7 +2272,7 @@ export default function Settings() {
 
               <CustomProxyPresetManager
                 profile={customProxyProfile}
-                keysRevision={customProxyKeysRevision}
+                keysRevision={getKeyRevision(PROVIDERS.OPENAI_PROXY)}
                 onActivated={handleCustomProxyPresetActivated}
               />
 
@@ -2227,7 +2350,7 @@ export default function Settings() {
                         description="Key này chỉ dùng cho Base URL custom, không dùng cho ag."
                         icon={Key}
                         onKeysChange={handleKeysChange}
-                        refreshToken={customProxyKeysRevision}
+                        refreshToken={getKeyRevision(PROVIDERS.OPENAI_PROXY)}
                       />
                     </div>
                   </div>
@@ -2297,13 +2420,21 @@ export default function Settings() {
                       <strong>{customProxyProfile.supportsGeminiSafetySettings ? 'Bật' : 'Tắt'}</strong>
                     </div>
                     {proxyModelFetchStatus ? (
-                      <div className={`settings-test-result ${proxyModelFetchStatus.type === 'success' ? 'success' : proxyModelFetchStatus.type === 'pending' ? 'pending' : 'error'}`}>
+                      <div
+                        className={`settings-test-result ${proxyModelFetchStatus.type === 'success' ? 'success' : proxyModelFetchStatus.type === 'pending' ? 'pending' : 'error'}`}
+                        role={proxyModelFetchStatus.type === 'error' ? 'alert' : 'status'}
+                        aria-live="polite"
+                      >
                         {proxyModelFetchStatus.type === 'success' ? <CheckCircle size={14} /> : proxyModelFetchStatus.type === 'pending' ? <RefreshCw size={14} className="animate-spin" /> : <XCircle size={14} />}
                         {proxyModelFetchStatus.text}
                       </div>
                     ) : null}
                     {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? (
-                      <div className={`settings-test-result ${testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}>
+                      <div
+                        className={`settings-test-result ${testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}
+                        role={testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success ? 'status' : 'alert'}
+                        aria-live="polite"
+                      >
                         {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success
                           ? <><CheckCircle size={14} /> Kết nối OK</>
                           : <><XCircle size={14} /> {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].error}</>}

@@ -16,6 +16,7 @@ import {
   normalizeOpenAIProxyProvider,
   setAgProxyModel,
 } from './openAIProxyConfig';
+import { normalizeGeminiDirectModelId } from './geminiDirectModels.js';
 
 // --- Providers ---
 export const PROVIDERS = {
@@ -151,6 +152,8 @@ const DIRECT_QUALITY_MAP = {
 };
 
 const PROXY_MODEL_KEY = 'sf-proxy-model';
+export const DIRECT_MODEL_KEY = 'sf-direct-model';
+export const DIRECT_MODEL_CATALOG_KEY = 'sf-direct-model-catalog';
 const AI_STUDIO_RELAY_MODEL_KEY = 'sf-ai-studio-relay-model';
 
 // ─── Proxy: task-specific model mapping ───
@@ -318,6 +321,62 @@ function getInitialAIStudioRelayModel() {
   return getDefaultAIStudioRelayModel();
 }
 
+function getDefaultDirectModel(legacyQuality = QUALITY_MODES.BALANCED) {
+  return DIRECT_QUALITY_MAP[legacyQuality]
+    || DIRECT_QUALITY_MAP[QUALITY_MODES.BALANCED];
+}
+
+function getInitialDirectModel(legacyQuality) {
+  try {
+    const saved = normalizeGeminiDirectModelId(localStorage.getItem(DIRECT_MODEL_KEY));
+    if (saved) return saved;
+  } catch { }
+  return getDefaultDirectModel(legacyQuality);
+}
+
+function normalizeDirectCatalog(models) {
+  const catalog = new Map();
+  (Array.isArray(models) ? models : []).forEach((model) => {
+    const id = normalizeGeminiDirectModelId(model?.id || model);
+    if (!id || catalog.has(id)) return;
+    const source = ['fetched', 'manual', 'preset'].includes(model?.source)
+      ? model.source
+      : 'fetched';
+    catalog.set(id, {
+      id,
+      label: String(model?.label || '').trim() || id,
+      source,
+    });
+  });
+  return [...catalog.values()];
+}
+
+function getDefaultDirectCatalog() {
+  return DIRECT_MODELS.map((model) => ({
+    id: model.id,
+    label: model.label,
+    source: 'preset',
+  }));
+}
+
+function getDirectModelCatalog() {
+  try {
+    const saved = localStorage.getItem(DIRECT_MODEL_CATALOG_KEY);
+    if (saved) {
+      const normalized = normalizeDirectCatalog(JSON.parse(saved));
+      if (normalized.length > 0) return normalized;
+    }
+  } catch { }
+  return getDefaultDirectCatalog();
+}
+
+function setDirectModelCatalog(models) {
+  const normalized = normalizeDirectCatalog(models);
+  if (normalized.length === 0) return getDirectModelCatalog();
+  localStorage.setItem(DIRECT_MODEL_CATALOG_KEY, JSON.stringify(normalized));
+  return normalized;
+}
+
 // ─── Active Direct models (user can manage) ───
 const ACTIVE_MODELS_KEY = 'sf-active-direct-models';
 
@@ -347,6 +406,12 @@ class ModelRouter {
       }
     } catch { }
     this.ollamaModel = localStorage.getItem('sf-ollama-model') || '';
+    this.directModel = getInitialDirectModel(this.qualityMode);
+    try {
+      if (localStorage.getItem(DIRECT_MODEL_KEY) !== this.directModel) {
+        localStorage.setItem(DIRECT_MODEL_KEY, this.directModel);
+      }
+    } catch { }
     this.aiStudioRelayModel = getInitialAIStudioRelayModel();
   }
 
@@ -369,6 +434,16 @@ class ModelRouter {
     this.proxyModel = normalizeProxyModel(model);
     setAgProxyModel(this.proxyModel);
   }
+
+  setDirectModel(model) {
+    const normalized = normalizeGeminiDirectModelId(model);
+    if (!normalized) return this.directModel;
+    this.directModel = normalized;
+    localStorage.setItem(DIRECT_MODEL_KEY, normalized);
+    return normalized;
+  }
+
+  setDirectModelCatalog(models) { return setDirectModelCatalog(models); }
 
   setAIStudioRelayModel(model) {
     this.aiStudioRelayModel = normalizeAIStudioRelayModel(model);
@@ -419,8 +494,7 @@ class ModelRouter {
     }
 
     if (provider === PROVIDERS.GEMINI_DIRECT) {
-      const model = DIRECT_QUALITY_MAP[quality] || DIRECT_QUALITY_MAP.balanced;
-      return { provider, model, tier: 'free' };
+      return { provider, model: this.directModel, tier: 'free' };
     }
 
     // OpenAI-compatible proxy. Legacy gemini_proxy maps here.
@@ -441,13 +515,9 @@ class ModelRouter {
     };
   }
 
-  getFallbacks(primaryRoute) {
+  getFallbacks(_primaryRoute) {
     const fallbacks = [];
-    const p = primaryRoute.provider;
 
-    if (p === PROVIDERS.GEMINI_DIRECT) {
-      fallbacks.push({ provider: PROVIDERS.GEMINI_DIRECT, model: 'gemini-3.1-flash-lite-preview', tier: 'free' });
-    }
     if (this.ollamaModel) {
       fallbacks.push({ provider: PROVIDERS.OLLAMA, model: this.ollamaModel, tier: 'local' });
     }
@@ -457,6 +527,8 @@ class ModelRouter {
   getQualityMode() { return this.qualityMode; }
   getOllamaModel() { return this.ollamaModel; }
   getProxyModel() { return this.proxyModel; }
+  getDirectModel() { return this.directModel; }
+  getDirectModelCatalog() { return getDirectModelCatalog(); }
   getOpenAIProxyProfile() { return getActiveOpenAIProxyProfile(); }
   getAIStudioRelayModel() { return this.aiStudioRelayModel; }
   getPreferredProvider() { return this.preferredProvider; }

@@ -86,11 +86,11 @@ describe('phase10 chapter completion model routing', () => {
     expect(getChapterCompletionModelState()).toMatchObject({
       provider: PROVIDERS.GEMINI_DIRECT,
       selectedModel: '',
-      currentModel: 'gemini-3-flash-preview',
+      currentModel: 'gemini-2.5-flash',
       shouldPrompt: true,
       routeOptions: {
         providerOverride: PROVIDERS.GEMINI_DIRECT,
-        modelOverride: 'gemini-3-flash-preview',
+        modelOverride: 'gemini-2.5-flash',
       },
     });
   });
@@ -175,6 +175,38 @@ describe('phase10 chapter completion model routing', () => {
 
     expect(getAvailableModelOptions(PROVIDERS.OLLAMA).map((option) => option.id))
       .toEqual(['qwen3:4b', 'llama3.2:3b']);
+  });
+
+  it('offers fetched and manual Gemini Direct models to completion model pickers', async () => {
+    const {
+      getAvailableModelOptions,
+      modelRouter,
+      routerModule: { PROVIDERS },
+    } = await loadRoutingStack();
+
+    modelRouter.setDirectModelCatalog([
+      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', source: 'fetched' },
+      { id: 'gemma-3-27b-it', label: 'Gemma 3 27B', source: 'fetched' },
+    ]);
+    modelRouter.setDirectModel('gemini-custom-writing-preview');
+
+    expect(getAvailableModelOptions(PROVIDERS.GEMINI_DIRECT)).toEqual([
+      {
+        id: 'gemini-custom-writing-preview',
+        label: 'gemini-custom-writing-preview',
+        meta: 'Nhập thủ công · chưa xác minh',
+      },
+      {
+        id: 'gemini-2.5-flash',
+        label: 'Gemini 2.5 Flash',
+        meta: 'Đã lấy từ AI Studio',
+      },
+      {
+        id: 'gemma-3-27b-it',
+        label: 'Gemma 3 27B',
+        meta: 'Đã lấy từ AI Studio',
+      },
+    ]);
   });
 
   it('builds exact completion overrides for AI Studio Relay and Ollama', async () => {

@@ -16,7 +16,7 @@ import {
   TestTube,
 } from 'lucide-react';
 import keyManager from '../../services/ai/keyManager';
-import modelRouter, { DIRECT_MODELS, PROVIDERS } from '../../services/ai/router';
+import modelRouter, { PROVIDERS } from '../../services/ai/router';
 import { getGeminiDirectBaseUrl } from '../../services/ai/client';
 import { navigateBackOr } from '../../utils/navigation.js';
 import '../Settings/Settings.css';
@@ -71,20 +71,19 @@ export default function GeminiSetupGuide() {
   const setupState = useMemo(() => {
     const keyCount = keyManager.getKeyCount('gemini_direct');
     const preferredProvider = modelRouter.getPreferredProvider();
-    const activeModels = modelRouter.getActiveDirectModels();
+    const selectedModel = modelRouter.getDirectModel();
+    const modelCatalog = modelRouter.getDirectModelCatalog();
     const endpoint = getGeminiDirectBaseUrl();
 
     return {
       keyCount,
       preferredProvider,
-      activeModels,
+      selectedModel,
+      modelCatalog,
       endpoint,
       usingGeminiDirect: preferredProvider === PROVIDERS.GEMINI_DIRECT,
     };
   }, []);
-
-  const recommendedModel =
-    DIRECT_MODELS.find((model) => model.id === 'gemini-3.1-flash-lite-preview') || DIRECT_MODELS[0];
 
   const handleOpenAiStudio = () => {
     window.open(AI_STUDIO_URL, '_blank', 'noopener,noreferrer');
@@ -160,9 +159,9 @@ export default function GeminiSetupGuide() {
           />
           <StatusCard
             icon={Sparkles}
-            label="Models đang bật"
-            value={setupState.activeModels.length > 0 ? `${setupState.activeModels.length} model` : 'Chưa bật model nào'}
-            tone={setupState.activeModels.length > 0 ? 'success' : 'warning'}
+            label="Model đang dùng"
+            value={setupState.selectedModel || 'Chưa chọn model'}
+            tone={setupState.selectedModel ? 'success' : 'warning'}
           />
           <StatusCard
             icon={TestTube}
@@ -232,38 +231,35 @@ export default function GeminiSetupGuide() {
 
         <StepCard index="3" title="Dán key vào StoryForge" icon={Settings}>
           <p>
-            Quay lại StoryForge và vào <strong>Settings</strong>. Ở phần <strong>API Keys</strong>, dùng đúng khu{' '}
-            <strong>Gemini Direct (AI Studio)</strong>.
+            Quay lại StoryForge và vào <strong>Settings</strong>. Chọn <strong>Gemini Direct</strong> trong phần{' '}
+            <strong>Provider đang dùng</strong>; bộ quản lý key sẽ hiện ngay bên dưới.
           </p>
           <ol className="gemini-guide-list">
             <li>Mở Settings.</li>
-            <li>Tìm section <strong>API Keys</strong>.</li>
+            <li>Chọn thẻ <strong>Gemini Direct</strong>.</li>
             <li>Ở ô nhập một key, dán key vừa copy vào.</li>
             <li>Bấm <strong>Thêm</strong>.</li>
           </ol>
           <div className="gemini-guide-note">
             <CheckCircle2 size={16} />
-            <span>Nếu bạn có nhiều key, có thể dùng nút Nhập nhiều để dán mỗi key một dòng. Chưa cần làm ngay lúc đầu.</span>
+            <span>Danh sách API Keys tổng hợp phía dưới vẫn dùng chung dữ liệu. Thay đổi ở một nơi sẽ hiện ngay ở nơi còn lại.</span>
           </div>
         </StepCard>
 
         <StepCard index="4" title="Chọn đúng provider và model" icon={Sparkles}>
           <p>
-            Sau khi đã có key, bạn cần chọn <strong>Gemini Direct</strong> là provider đang dùng. Với người mới, model để
-            bắt đầu nên là <strong>{recommendedModel?.label || 'Gemini 3.1 Flash Lite Preview'}</strong>.
+            Sau khi đã có key, bấm <strong>Lấy models</strong> để đọc danh sách model văn bản mà Google AI Studio trả về,
+            rồi chọn chính xác một model cho phần viết truyện.
           </p>
           <ol className="gemini-guide-list">
             <li>Trong section <strong>Provider đang dùng</strong>, chọn <strong>Gemini Direct</strong>.</li>
             <li>Nếu cần, giữ nguyên endpoint: <code>{setupState.endpoint}</code>.</li>
-            <li>
-              Trong phần models, giữ bật model{' '}
-              <strong>{recommendedModel?.label || 'Gemini 3.1 Flash Lite Preview'}</strong>.
-            </li>
-            <li>Có thể giữ thêm các model khác, nhưng không cần quá nhiều lúc mới setup.</li>
+            <li>Bấm <strong>Lấy models</strong>, sau đó chọn model trong hộp danh sách.</li>
+            <li>Nếu model mới chưa xuất hiện, nhập model ID thủ công. StoryForge sẽ giữ nguyên lựa chọn và đánh dấu chưa xác minh.</li>
           </ol>
           <div className="gemini-guide-note">
             <Sparkles size={16} />
-            <span>Model 3.1 Flash Lite thường dễ bắt đầu hơn vì quota rộng hơn. Hợp để test chat, translation và các thao tác nhẹ.</span>
+            <span>Hiện đang chọn {setupState.selectedModel}. Catalog đã lưu có {setupState.modelCatalog.length} model.</span>
           </div>
         </StepCard>
 

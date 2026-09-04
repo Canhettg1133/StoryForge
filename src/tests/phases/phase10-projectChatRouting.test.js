@@ -199,11 +199,11 @@ describe('phase10 ProjectChat routing inheritance', () => {
       getThreadRouting,
       normalizeThread,
       modelRouter,
-      routerModule: { PROVIDERS, QUALITY_MODES },
+      routerModule: { PROVIDERS },
     } = await loadProjectChatHelpers();
 
     modelRouter.setPreferredProvider(PROVIDERS.GEMINI_DIRECT);
-    modelRouter.setQualityMode(QUALITY_MODES.BEST);
+    modelRouter.setDirectModel('gemini-3-flash-preview');
 
     const thread = normalizeThread({
       id: 102,
@@ -583,10 +583,10 @@ describe('phase10 ProjectChat routing inheritance', () => {
     const {
       getThreadRouting,
       modelRouter,
-      routerModule: { PROVIDERS, QUALITY_MODES },
+      routerModule: { PROVIDERS },
     } = await loadProjectChatHelpers();
 
-    modelRouter.setQualityMode(QUALITY_MODES.BEST);
+    modelRouter.setDirectModel('gemini-3-flash-preview');
 
     const routing = getThreadRouting({
       id: 104,

@@ -212,6 +212,33 @@ describe('OpenAI-compatible proxy client payloads', () => {
     expect(body.payload.safety_settings).toEqual(body.payload.safetySettings);
   });
 
+  it('tests Gemini Direct ListModels with a header and never puts the API key in the URL', async () => {
+    const {
+      aiService,
+      keyManager,
+      routerModule: { PROVIDERS },
+    } = await loadClientStack();
+    keyManager.addKey(PROVIDERS.GEMINI_DIRECT, 'direct-test-secret');
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      models: [{
+        name: 'models/gemini-2.5-flash',
+        supportedGenerationMethods: ['generateContent'],
+      }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(aiService.testConnection(PROVIDERS.GEMINI_DIRECT)).resolves.toEqual({
+      success: true,
+      models: ['gemini-2.5-flash'],
+    });
+    expect(fetchMock.mock.calls[0][0]).not.toContain('direct-test-secret');
+    expect(fetchMock.mock.calls[0][1].headers)
+      .toEqual({ 'x-goog-api-key': 'direct-test-secret' });
+  });
+
   it('forwards OpenAI-compatible image_url message parts to the ag proxy unchanged', async () => {
     const {
       aiService,

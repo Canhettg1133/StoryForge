@@ -1,6 +1,5 @@
 import modelRouter, {
   AI_STUDIO_RELAY_MODELS,
-  DIRECT_MODELS,
   PROXY_MODELS,
   PROXY_MODEL_PRESETS,
   PROVIDERS,
@@ -108,13 +107,26 @@ export function getAvailableModelOptions(provider, {
   }
 
   if (normalizedProvider === PROVIDERS.GEMINI_DIRECT) {
-    const activeIds = new Set(modelRouter.getActiveDirectModels().map((item) => item.id));
-    return DIRECT_MODELS
-      .filter((model) => activeIds.size === 0 || activeIds.has(model.id))
+    const currentModel = modelRouter.getDirectModel();
+    const catalog = modelRouter.getDirectModelCatalog();
+    const catalogIds = new Set(catalog.map((model) => model.id));
+    const models = [
+      ...(!catalogIds.has(currentModel) ? [{
+        id: currentModel,
+        label: currentModel,
+        source: 'manual',
+      }] : []),
+      ...catalog,
+    ];
+    return models
       .map((model) => ({
         id: model.id,
         label: model.label,
-        meta: `${model.rpm} RPM · ${model.rpd} RPD`,
+        meta: model.source === 'fetched'
+          ? 'Đã lấy từ AI Studio'
+          : model.source === 'preset'
+            ? 'Preset StoryForge'
+            : 'Nhập thủ công · chưa xác minh',
       }));
   }
 

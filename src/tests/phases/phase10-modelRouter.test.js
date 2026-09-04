@@ -161,7 +161,28 @@ describe('phase10 model router proxy model selection', () => {
     expect(route.proxyProfileId).toBe('ag-gemini-proxy');
   });
 
-  it('preserves Gemini Direct quality mapping', async () => {
+  it.each([
+    ['fast', 'gemini-3.1-flash-lite-preview'],
+    ['balanced', 'gemini-2.5-flash'],
+    ['best', 'gemini-3-flash-preview'],
+  ])('migrates legacy Gemini Direct quality %s to the same effective model', async (quality, expectedModel) => {
+    localStorage.setItem('sf-quality-mode', quality);
+
+    const {
+      default: modelRouter,
+      PROVIDERS,
+      TASK_TYPES,
+    } = await loadRouter();
+
+    expect(modelRouter.getDirectModel()).toBe(expectedModel);
+    expect(localStorage.getItem('sf-direct-model')).toBe(expectedModel);
+    expect(modelRouter.route(TASK_TYPES.CONTINUE, {
+      providerOverride: PROVIDERS.GEMINI_DIRECT,
+      qualityOverride: quality === 'fast' ? 'best' : 'fast',
+    }).model).toBe(expectedModel);
+  });
+
+  it('persists an exact fetched or manual Gemini Direct model and ignores quality overrides', async () => {
     const {
       default: modelRouter,
       PROVIDERS,
@@ -169,20 +190,46 @@ describe('phase10 model router proxy model selection', () => {
       QUALITY_MODES,
     } = await loadRouter();
 
-    expect(modelRouter.route(TASK_TYPES.CONTINUE, {
-      providerOverride: PROVIDERS.GEMINI_DIRECT,
-      qualityOverride: QUALITY_MODES.FAST,
-    }).model).toBe('gemini-3.1-flash-lite-preview');
+    modelRouter.setDirectModelCatalog([
+      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', source: 'fetched' },
+      { id: 'gemma-3-27b-it', label: 'Gemma 3 27B', source: 'fetched' },
+    ]);
+    modelRouter.setDirectModel('models/gemma-3-27b-it');
 
-    expect(modelRouter.route(TASK_TYPES.CONTINUE, {
-      providerOverride: PROVIDERS.GEMINI_DIRECT,
-      qualityOverride: QUALITY_MODES.BALANCED,
-    }).model).toBe('gemini-2.5-flash');
-
+    expect(modelRouter.getDirectModel()).toBe('gemma-3-27b-it');
+    expect(localStorage.getItem('sf-direct-model')).toBe('gemma-3-27b-it');
+    expect(modelRouter.getDirectModelCatalog()).toEqual([
+      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', source: 'fetched' },
+      { id: 'gemma-3-27b-it', label: 'Gemma 3 27B', source: 'fetched' },
+    ]);
     expect(modelRouter.route(TASK_TYPES.CONTINUE, {
       providerOverride: PROVIDERS.GEMINI_DIRECT,
       qualityOverride: QUALITY_MODES.BEST,
-    }).model).toBe('gemini-3-flash-preview');
+    })).toEqual({
+      provider: PROVIDERS.GEMINI_DIRECT,
+      model: 'gemma-3-27b-it',
+      tier: 'free',
+    });
+  });
+
+  it('does not silently retry Gemini Direct with another Gemini model', async () => {
+    const {
+      default: modelRouter,
+      PROVIDERS,
+      TASK_TYPES,
+    } = await loadRouter();
+
+    modelRouter.setDirectModel('gemini-2.5-pro');
+    expect(modelRouter.getFallbacks(modelRouter.route(TASK_TYPES.CONTINUE, {
+      providerOverride: PROVIDERS.GEMINI_DIRECT,
+    }))).toEqual([]);
+
+    modelRouter.setOllamaModel('qwen3:4b');
+    expect(modelRouter.getFallbacks(modelRouter.route(TASK_TYPES.CONTINUE, {
+      providerOverride: PROVIDERS.GEMINI_DIRECT,
+    }))).toEqual([
+      { provider: PROVIDERS.OLLAMA, model: 'qwen3:4b', tier: 'local' },
+    ]);
   });
 
   it('migrates missing proxy model from legacy quality mode', async () => {

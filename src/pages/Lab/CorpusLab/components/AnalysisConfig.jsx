@@ -1,9 +1,7 @@
 ﻿import React, { useMemo } from 'react';
 import keyManager from '../../../../services/ai/keyManager';
-import {
-  DIRECT_MODELS,
-  PROXY_MODELS,
-} from '../../../../services/ai/router';
+import { getAvailableModelOptions } from '../../../../services/ai/modelOptions.js';
+import { PROXY_MODELS } from '../../../../services/ai/router';
 import {
   ANALYSIS_CONFIG,
   ANALYSIS_PROVIDERS,
@@ -50,31 +48,9 @@ function formatWords(value) {
   return Number(value || 0).toLocaleString('vi-VN');
 }
 
-function getActiveDirectModelIds() {
-  try {
-    const activeRaw = localStorage.getItem('sf-active-direct-models');
-    if (!activeRaw) {
-      return [];
-    }
-
-    const parsed = JSON.parse(activeRaw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed
-      .map((item) => String(item?.id || '').trim())
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
 function getModelOptions(provider) {
   if (provider === ANALYSIS_PROVIDERS.GEMINI_DIRECT) {
-    const activeIds = new Set(getActiveDirectModelIds());
-    const source = DIRECT_MODELS.filter((model) => activeIds.size === 0 || activeIds.has(model.id));
-    return source.map((model) => ({
+    return getAvailableModelOptions(provider).map((model) => ({
       id: model.id,
       label: model.label,
     }));

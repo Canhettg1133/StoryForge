@@ -8,6 +8,7 @@
  */
 
 import keyManager from './keyManager';
+import { fetchGeminiDirectModels } from './geminiDirectModels.js';
 import { AI_ERROR_CODES, normalizeAIError, shouldFallbackForError } from './errorUtils';
 import modelRouter, { PROVIDERS, TASK_TYPES } from './router';
 import {
@@ -1698,12 +1699,12 @@ class AIService {
       if (provider === PROVIDERS.GEMINI_DIRECT) {
         const apiKey = keyManager.getNextKey('gemini_direct');
         if (!apiKey) return { success: false, error: 'Chưa có API key' };
-        const res = await fetch(
-          buildGeminiDirectEndpoint(getGeminiDirectBaseUrl(), `/models?key=${apiKey}`),
-          { signal: AbortSignal.timeout(8000) },
-        );
-        if (!res.ok) throw new Error(`Yêu cầu thất bại với mã ${res.status}.`);
-        return { success: true, models: [] };
+        const models = await fetchGeminiDirectModels({
+          apiKey,
+          baseUrl: getGeminiDirectBaseUrl(),
+          timeoutMs: 8000,
+        });
+        return { success: true, models: models.map((model) => model.id) };
       }
       if (provider === PROVIDERS.AI_STUDIO_RELAY) {
         const relayUrl = getAIStudioRelayUrl();

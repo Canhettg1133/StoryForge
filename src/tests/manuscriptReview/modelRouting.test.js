@@ -46,8 +46,26 @@ describe('manuscript review model preferences', () => {
     completion.saveChapterCompletionModelPreference({ provider: 'gemini_direct', model: 'gemini-2.5-flash' });
     expect(review.getManuscriptReviewModelState()).toMatchObject({
       selectedModel: '', shouldPrompt: false, suggestedFromCompletion: false,
-      routeOptions: { modelOverride: 'gemini-3-flash-preview' },
+      routeOptions: { modelOverride: 'gemini-2.5-flash' },
     });
+  });
+
+  it('shows fetched and manual Gemini Direct models in manuscript review choices', async () => {
+    const { review, router } = await loadStack();
+    router.setPreferredProvider('gemini_direct');
+    router.setDirectModelCatalog([
+      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', source: 'fetched' },
+      { id: 'gemma-3-27b-it', label: 'Gemma 3 27B', source: 'fetched' },
+    ]);
+    router.setDirectModel('gemini-writing-preview');
+
+    const state = review.getManuscriptReviewModelState();
+    expect(state.currentModel).toBe('gemini-writing-preview');
+    expect(state.options.map((option) => option.id)).toEqual([
+      'gemini-writing-preview',
+      'gemini-2.5-flash',
+      'gemma-3-27b-it',
+    ]);
   });
 
   it('isolates proxy profiles and asks again for missing or corrupt preferences', async () => {

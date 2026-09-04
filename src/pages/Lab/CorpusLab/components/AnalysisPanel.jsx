@@ -5,10 +5,8 @@ import {
   getProxyUrl,
 } from '../../../../services/ai/client';
 import keyManager from '../../../../services/ai/keyManager';
-import {
-  DIRECT_MODELS,
-  PROXY_MODELS,
-} from '../../../../services/ai/router';
+import { getAvailableModelOptions } from '../../../../services/ai/modelOptions.js';
+import { PROXY_MODELS } from '../../../../services/ai/router';
 import {
   ANALYSIS_CONFIG,
   ANALYSIS_PROVIDERS,
@@ -25,33 +23,10 @@ import AnalysisProgress from './AnalysisProgress';
 
 function getModelOptions(provider) {
   if (provider === ANALYSIS_PROVIDERS.GEMINI_DIRECT) {
-    const activeDirectModels = modelIdsFromActiveDirect();
-    const activeSet = new Set(activeDirectModels);
-    const source = DIRECT_MODELS.filter((model) => activeSet.size === 0 || activeSet.has(model.id));
-    return source.map((model) => model.id);
+    return getAvailableModelOptions(provider).map((model) => model.id);
   }
 
   return PROXY_MODELS.map((model) => model.id);
-}
-
-function modelIdsFromActiveDirect() {
-  try {
-    const activeRaw = localStorage.getItem('sf-active-direct-models');
-    if (!activeRaw) {
-      return [];
-    }
-
-    const parsed = JSON.parse(activeRaw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed
-      .map((item) => String(item?.id || '').trim())
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
 }
 
 function getDefaultModel(provider) {
